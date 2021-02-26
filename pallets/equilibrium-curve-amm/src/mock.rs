@@ -2,12 +2,14 @@ use crate as curve_amm;
 use frame_support::{
     dispatch::{DispatchError, DispatchResult},
     parameter_types,
+    traits::{Currency, OnUnbalanced},
 };
 use frame_system as system;
 use sp_core::H256;
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup},
+    ModuleId,
 };
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -21,6 +23,7 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system::{Module, Call, Config, Storage, Event<T>},
+        Balances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
         CurveAmm: curve_amm::{Module, Call, Storage, Event<T>},
     }
 );
@@ -50,7 +53,7 @@ impl system::Config for Test {
     type BlockHashCount = BlockHashCount;
     type Version = ();
     type PalletInfo = PalletInfo;
-    type AccountData = ();
+    type AccountData = pallet_balances::AccountData<Balance>;
     type OnNewAccount = ();
     type OnKilledAccount = ();
     type SystemWeightInfo = ();
@@ -58,7 +61,22 @@ impl system::Config for Test {
 }
 
 parameter_types! {
+    pub const ExistentialDeposit: u64 = 1;
+}
+
+impl pallet_balances::Config for Test {
+    type MaxLocks = ();
+    type Balance = Balance;
+    type DustRemoval = ();
+    type Event = Event;
+    type ExistentialDeposit = ExistentialDeposit;
+    type AccountStore = System;
+    type WeightInfo = ();
+}
+
+parameter_types! {
     pub const CreationFee: Balance = 999;
+    pub const CurveAmmModuleId: ModuleId = ModuleId(*b"eq/crvam");
 }
 
 pub type Balance = u128;
@@ -98,13 +116,23 @@ impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for EmptyAssets {
     }
 }
 
+pub struct EmptyUnbalanceHandler;
+
+impl OnUnbalanced<<pallet_balances::Pallet<Test> as Currency<AccountId>>::NegativeImbalance>
+    for EmptyUnbalanceHandler
+{
+}
+
 impl curve_amm::Config for Test {
     type Event = Event;
     type AssetId = i64;
     type Balance = Balance;
-    type Currency = i64;
+    type Currency = Balances;
     type CreationFee = CreationFee;
     type Assets = EmptyAssets;
+    type OnUnbalanced = EmptyUnbalanceHandler;
+    type ModuleId = CurveAmmModuleId;
+
     type Number = Number;
 }
 

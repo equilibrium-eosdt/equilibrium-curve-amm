@@ -17,7 +17,7 @@ use sp_runtime::traits::{
 use sp_runtime::{
     create_runtime_str, generic, impl_opaque_keys,
     transaction_validity::{TransactionSource, TransactionValidity},
-    ApplyExtrinsicResult, MultiSignature,
+    ApplyExtrinsicResult, ModuleId, MultiSignature,
 };
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -29,7 +29,7 @@ pub use frame_support::{
     construct_runtime,
     dispatch::{DispatchError, DispatchResult},
     parameter_types,
-    traits::{KeyOwnerProofSystem, Randomness},
+    traits::{Currency, KeyOwnerProofSystem, OnUnbalanced, Randomness},
     weights::{
         constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND},
         IdentityFee, Weight,
@@ -264,6 +264,7 @@ impl pallet_sudo::Config for Runtime {
 
 parameter_types! {
     pub const CreationFee: Balance = 999;
+    pub const CurveAmmModuleId: ModuleId = ModuleId(*b"eq/crvam");
 }
 
 type Number = sp_runtime::FixedI128;
@@ -302,15 +303,25 @@ impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for Empt
     }
 }
 
+pub struct EmptyUnbalanceHandler;
+
+impl OnUnbalanced<<pallet_balances::Pallet<Runtime> as Currency<AccountId>>::NegativeImbalance>
+    for EmptyUnbalanceHandler
+{
+}
+
 /// Configure the pallet equilibrium_curve_amm in pallets/equilibrium_curve_amm.
 impl equilibrium_curve_amm::Config for Runtime {
     type Event = Event;
     type AssetId = AssetId;
     type Balance = Balance;
-    type Currency = i64;
+    type Currency = pallet_balances::Pallet<Runtime>;
     type CreationFee = CreationFee;
-    type Number = Number;
     type Assets = EmptyAssets;
+    type OnUnbalanced = EmptyUnbalanceHandler;
+    type ModuleId = CurveAmmModuleId;
+
+    type Number = Number;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

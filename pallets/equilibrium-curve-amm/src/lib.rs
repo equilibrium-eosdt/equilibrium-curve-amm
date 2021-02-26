@@ -17,7 +17,6 @@
 //! Curve’s unique stableswap invariant utilizes liquidity much more efficiently compared to all existing DEXes for stablecoins at already several hundred USD TVL (total value locked). Since initial liquidity on Polkadot is hardly going to be very large, proposed efficiency is VERY important for the ecosystem to flourish.
 
 #![warn(missing_docs)]
-
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub use pallet::*;
@@ -40,9 +39,10 @@ pub mod pallet {
     use frame_support::{
         dispatch::{Codec, DispatchResultWithPostInfo},
         pallet_prelude::*,
+        traits::{Currency, OnUnbalanced},
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::Permill;
+    use sp_runtime::{ModuleId, Permill};
     use sp_std::prelude::*;
     use substrate_fixed::traits::Fixed;
 
@@ -59,12 +59,18 @@ pub mod pallet {
         /// External implementation for required opeartions with assets
         type Assets: super::traits::Assets<Self::AssetId, Self::Balance, Self::AccountId>;
         /// Standart balances pallet for utility token or adapter
-        type Currency;
+        type Currency: Currency<Self::AccountId>;
         /// Anti ddos fee for pool creation
         #[pallet::constant]
         type CreationFee: Get<Self::Balance>;
-        //type OnUnbalanced: OnUnbalanced;
-        //type ModuleId: ModuleId;
+        /// What to do with fee (burn, transfer to treasury, etc)
+        type OnUnbalanced: OnUnbalanced<
+            <Self::Currency as Currency<Self::AccountId>>::NegativeImbalance,
+        >;
+        /// Module account
+        #[pallet::constant]
+        type ModuleId: Get<ModuleId>;
+
         /// Number type for underlying calculations
         type Number: Parameter + From<Permill>;
     }
@@ -112,7 +118,6 @@ pub mod pallet {
             // take fee
             // add new pool
 
-            // todo: make error value meaningful
             let asset = T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
 
             Ok(().into())
