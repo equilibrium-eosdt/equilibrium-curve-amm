@@ -35,14 +35,16 @@ use sp_std::prelude::*;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::traits::Assets;
+    use super::{traits::Assets, PoolInfo};
     use frame_support::{
-        dispatch::{Codec, DispatchResultWithPostInfo},
+        dispatch::{Codec, DispatchResult, DispatchResultWithPostInfo},
         pallet_prelude::*,
-        traits::{Currency, OnUnbalanced},
+        traits::{Currency, ExistenceRequirement, OnUnbalanced, WithdrawReasons},
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::{ModuleId, Permill};
+    use sp_std::collections::btree_set::BTreeSet;
+    use sp_std::iter::FromIterator;
     use sp_std::prelude::*;
     use substrate_fixed::traits::Fixed;
 
@@ -53,13 +55,13 @@ pub mod pallet {
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
         /// Identificator type of Asset
-        type AssetId: Parameter;
+        type AssetId: Parameter + Ord + Copy;
         /// The balance of an account
         type Balance: Encode;
         /// External implementation for required opeartions with assets
         type Assets: super::traits::Assets<Self::AssetId, Self::Balance, Self::AccountId>;
         /// Standart balances pallet for utility token or adapter
-        type Currency: Currency<Self::AccountId>;
+        type Currency: Currency<Self::AccountId, Balance = Self::Balance>;
         /// Anti ddos fee for pool creation
         #[pallet::constant]
         type CreationFee: Get<Self::Balance>;
@@ -79,18 +81,24 @@ pub mod pallet {
     #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
 
+    /// Current pools count
+    #[pallet::storage]
+    #[pallet::getter(fn pool_count)]
+    pub type PoolCount<T: Config> = StorageValue<_, u32, ValueQuery>;
+
     /// All pools infos
     #[pallet::storage]
     #[pallet::getter(fn pools)]
-    pub type Pools<T: Config> = StorageValue<_, super::PoolInfo<T::AssetId, T::Number>>;
+    pub type Pools<T: Config> =
+        StorageMap<_, Blake2_128Concat, u32, PoolInfo<T::AssetId, T::Number>>;
 
     /// Event type for Equilibrium Curve AMM pallet
     #[pallet::event]
     #[pallet::metadata(T::AccountId = "AccountId")]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Temporary stub event
-        StubEvent(u32, T::AccountId),
+        /// Pool with specified id created successfully
+        PoolCreated(T::AccountId, u32),
     }
 
     /// Error type for Equilibrium Curve AMM pallet
@@ -98,6 +106,14 @@ pub mod pallet {
     pub enum Error<T> {
         /// Could not create new asset
         AssetNotCreated,
+        /// User does not have required amount of currency to complete operation
+        NotEnoughForFee,
+        /// Values in the storage are inconsistent
+        InconsistentStorage,
+        /// Not enough assets provided
+        NotEnoughAssets,
+        /// Some provided assets are not unique
+        DuplicateAssets,
     }
 
     #[pallet::hooks]
@@ -113,12 +129,61 @@ pub mod pallet {
             amplification: T::Number,
             fee: Permill,
         ) -> DispatchResultWithPostInfo {
-            let _who = ensure_signed(origin)?;
+            let who = ensure_signed(origin)?;
 
-            // take fee
-            // add new pool
+            // Assets related checks
+            ensure!(assets.len() > 1, Error::<T>::NotEnoughAssets);
+            let unique_assets = BTreeSet::<T::AssetId>::from_iter(assets.iter().copied());
+            ensure!(
+                unique_assets.len() == assets.len(),
+                Error::<T>::DuplicateAssets
+            );
 
-            let asset = T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
+            // Take fee
+            let creation_fee = T::CreationFee::get();
+            let imbalance = T::Currency::withdraw(
+                &who,
+                creation_fee,
+                WithdrawReasons::FEE,
+                ExistenceRequirement::AllowDeath,
+            )
+            .map_err(|_| Error::<T>::NotEnoughForFee)?;
+            T::OnUnbalanced::on_unbalanced(imbalance);
+
+            // Add new pool
+            let pool_key =
+                PoolCount::<T>::try_mutate(|pool_count| -> Result<u32, DispatchError> {
+                    let pool_key = *pool_count;
+
+                    Pools::<T>::try_mutate_exists(pool_key, |maybe_pool_info| -> DispatchResult {
+                        // We expect that PoolInfos have sequential keys.
+                        // No PoolInfo can have key greater or equal to PoolCount
+                        maybe_pool_info
+                            .as_ref()
+                            .map(|_| Err(Error::<T>::InconsistentStorage))
+                            .unwrap_or(Ok(()))?;
+
+                        let asset =
+                            T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
+
+                        *maybe_pool_info = Some(PoolInfo {
+                            pool_asset: asset,
+                            assets: assets,
+                            amplification,
+                            fee,
+                        });
+
+                        Ok(())
+                    })?;
+
+                    *pool_count = pool_key
+                        .checked_add(1)
+                        .ok_or(Error::<T>::InconsistentStorage)?;
+
+                    Ok(pool_key)
+                })?;
+
+            Self::deposit_event(Event::PoolCreated(who.clone(), pool_key));
 
             Ok(().into())
         }
@@ -155,11 +220,11 @@ pub mod traits {
 #[derive(Encode, Decode, Clone, Default, PartialEq, Eq, Debug)]
 pub struct PoolInfo<AssetId, Number> {
     /// LP multiasset
-    PoolAsset: AssetId,
+    pool_asset: AssetId,
     /// List of multiassets supported by the pool
-    Assets: Vec<AssetId>,
+    assets: Vec<AssetId>,
     /// Initial amplification coefficient (leverage)
-    Amplification: Number,
+    amplification: Number,
     /// Amount of the fee pool charges for the exchange
-    Fee: Permill,
+    fee: Permill,
 }
