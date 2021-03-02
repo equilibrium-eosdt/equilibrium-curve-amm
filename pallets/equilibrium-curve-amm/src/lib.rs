@@ -228,3 +228,105 @@ pub struct PoolInfo<AssetId, Number> {
     /// Amount of the fee pool charges for the exchange
     fee: Permill,
 }
+
+use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub};
+use sp_std::cmp::Ordering;
+use sp_std::convert::TryFrom;
+
+pub struct MathError;
+
+pub type PrimitiveType = u16;
+
+pub fn get_d<N>(xp: Vec<N>, amp: N) -> Option<N>
+where
+    N: CheckedAdd
+        + CheckedSub
+        + CheckedMul
+        + CheckedDiv
+        + From<(PrimitiveType, PrimitiveType)>
+        + Copy
+        + Eq
+        + Ord,
+{
+    let zero = N::from((PrimitiveType::from(0u8), PrimitiveType::from(1u8)));
+    let one = N::from((PrimitiveType::from(1u8), PrimitiveType::from(1u8)));
+
+    let n_coins = N::from((
+        PrimitiveType::try_from(xp.len()).ok()?,
+        PrimitiveType::from(1u8),
+    ));
+
+    let mut s = zero;
+    let mut d_prev = zero;
+
+    for x in xp.iter() {
+        s = s.checked_add(x)?;
+    }
+    if s == zero {
+        return None;
+    }
+
+    let mut d = s;
+
+    // ann = amp * n^n
+    let mut ann = amp;
+    for i in 0..xp.len() {
+        ann = ann.checked_mul(&n_coins)?;
+    }
+
+    for i in 0..255 {
+        let mut d_p = d;
+        for x in xp.iter() {
+            // d_p = d_p * d / (x * n_coins)
+            d_p = d_p
+                .checked_mul(&d)?
+                .checked_div(&x.checked_mul(&n_coins)?)?;
+        }
+        d_prev = d;
+        // d = (ann * s + d_p * n_coins) * d / ((ann - 1) * d + (n_coins + 1) * d_p)
+        d = ann
+            .checked_mul(&s)?
+            .checked_add(&d_p.checked_mul(&n_coins)?)?
+            .checked_mul(&d)?
+            .checked_div(
+                &ann.checked_sub(&one)?
+                    .checked_mul(&d)?
+                    .checked_add(&n_coins.checked_add(&one)?.checked_mul(&d_p)?)?,
+            )?;
+
+        if d.cmp(&d_prev) == Ordering::Greater {
+            if d.checked_sub(&d_prev)?.cmp(&one) != Ordering::Greater {
+                return Some(d);
+            }
+        } else {
+            if d_prev.checked_sub(&d)?.cmp(&one) != Ordering::Greater {
+                return Some(d);
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod math_tests {
+    use super::*;
+    use sp_runtime::traits::Saturating;
+    use sp_runtime::{FixedI128, FixedPointNumber};
+
+    #[test]
+    fn get_d_impl() {
+        let result = get_d(
+            vec![
+                FixedI128::saturating_from_rational(11, 10),
+                FixedI128::saturating_from_rational(88, 100),
+            ],
+            FixedI128::saturating_from_rational(292, 100),
+        );
+
+        let delta = result
+            .map(|x| x.saturating_sub(FixedI128::saturating_from_rational(19782, 10_000)))
+            .map(|x| x.cmp(&FixedI128::saturating_from_rational(1, 10_000)));
+        assert_eq!(delta, Some(Ordering::Less));
+    }
+}
