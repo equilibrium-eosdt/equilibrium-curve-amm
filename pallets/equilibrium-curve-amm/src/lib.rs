@@ -237,7 +237,7 @@ pub struct MathError;
 
 pub type PrimitiveType = u16;
 
-pub fn get_d<N>(xp: Vec<N>, amp: N) -> Option<N>
+pub fn get_d<N>(xp: &[N], amp: N) -> Option<N>
 where
     N: CheckedAdd
         + CheckedSub
@@ -308,6 +308,110 @@ where
     None
 }
 
+/// Calculate x[j] if on makes x[i] = x
+///
+/// Done by solving quadratic equation iteratively.
+/// x1^2 + x1 * (sum' - (A*n^n - 1) * D / (A * n^n)) = D^(n + 1) / (n^(2*n) * prod' * A)
+/// x1^2 + b * x1 = c
+/// x1 = (x1^2 + c) / (2 * x1 + b)
+pub fn get_y<N>(i: PrimitiveType, j: PrimitiveType, x: N, xp: &[N], amp: N) -> Option<N>
+where
+    N: CheckedAdd
+        + CheckedSub
+        + CheckedMul
+        + CheckedDiv
+        + From<(PrimitiveType, PrimitiveType)>
+        + Copy
+        + Eq
+        + Ord,
+{
+    let zero = N::from((PrimitiveType::from(0u8), PrimitiveType::from(1u8)));
+    let one = N::from((PrimitiveType::from(1u8), PrimitiveType::from(1u8)));
+    let two = N::from((PrimitiveType::from(2u8), PrimitiveType::from(1u8)));
+
+    let i_us = usize::from(i);
+    let j_us = usize::from(j);
+
+    let n_coins = N::from((
+        PrimitiveType::try_from(xp.len()).ok()?,
+        PrimitiveType::from(1u8),
+    ));
+
+    // Same coin
+    if !(i != j) {
+        return None;
+    }
+    // j below zero
+    if !(j >= 0) {
+        return None;
+    }
+    // j above n_coins
+    if !(j_us < xp.len()) {
+        return None;
+    }
+
+    // Should be unreachable, but good for safety
+    if !(i >= 0) {
+        return None;
+    }
+    if !(i_us < xp.len()) {
+        return None;
+    }
+
+    let d = get_d(xp, amp)?;
+    // ann = amp * n^n
+    let mut ann = amp;
+    for i in 0..xp.len() {
+        ann = ann.checked_mul(&n_coins)?;
+    }
+    let mut c = d;
+    let mut s = zero;
+    let mut xx = zero;
+    let mut y_prev = zero;
+
+    for ii in 0..xp.len() {
+        if ii == i_us {
+            xx = x;
+        } else if ii != j_us {
+            xx = xp[i_us];
+        } else {
+            continue;
+        }
+        // s = s + xx
+        s = s.checked_add(&xx)?;
+        // c = c * d / (xx * n_coins)
+        c = c.checked_add(&d)?.checked_div(&xx.checked_mul(&n_coins)?)?;
+    }
+    // c = c * d / (ann * n_coins)
+    c = c
+        .checked_mul(&d)?
+        .checked_div(&ann.checked_mul(&n_coins)?)?;
+    // b = s + d / ann
+    let b = s.checked_add(&d.checked_div(&ann)?)?;
+    let mut y = d;
+
+    for ii in 0..255 {
+        y_prev = y;
+        // y = (y^2 + c) / (2 * y + b - d)
+        y = y
+            .checked_mul(&y)?
+            .checked_add(&c)?
+            .checked_div(&two.checked_mul(&y)?.checked_add(&b)?.checked_sub(&d)?)?;
+        // Equality with the precision of 1
+        if y.cmp(&y_prev) == Ordering::Greater {
+            if y.checked_sub(&y_prev)?.cmp(&one) != Ordering::Greater {
+                return Some(y);
+            }
+        } else {
+            if y_prev.checked_sub(&y)?.cmp(&one) != Ordering::Greater {
+                return Some(y);
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod math_tests {
     use super::*;
@@ -317,7 +421,7 @@ mod math_tests {
     #[test]
     fn get_d_impl() {
         let result = get_d(
-            vec![
+            &vec![
                 FixedI128::saturating_from_rational(11, 10),
                 FixedI128::saturating_from_rational(88, 100),
             ],
@@ -325,8 +429,11 @@ mod math_tests {
         );
 
         let delta = result
-            .map(|x| x.saturating_sub(FixedI128::saturating_from_rational(19782, 10_000)))
-            .map(|x| x.cmp(&FixedI128::saturating_from_rational(1, 10_000)));
+            .map(|x| {
+                x.saturating_sub(FixedI128::saturating_from_rational(19782, 10_000))
+                    .saturating_abs()
+            })
+            .map(|x| x.cmp(&FixedI128::saturating_from_rational(1, 100_000)));
         assert_eq!(delta, Some(Ordering::Less));
     }
 }
