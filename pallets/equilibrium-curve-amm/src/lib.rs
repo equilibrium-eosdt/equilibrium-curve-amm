@@ -21,8 +21,6 @@
 
 pub use pallet::*;
 
-//mod math;
-
 #[cfg(test)]
 mod mock;
 
