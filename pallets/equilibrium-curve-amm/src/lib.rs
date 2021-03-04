@@ -315,8 +315,6 @@ where
     None
 }
 
-use sp_std::fmt::Debug;
-
 /// Calculate x[j] if on makes x[i] = x
 ///
 /// Done by solving quadratic equation iteratively.
@@ -332,8 +330,7 @@ where
         + From<(PrimitiveType, PrimitiveType)>
         + Copy
         + Eq
-        + Ord
-        + Debug,
+        + Ord,
 {
     let zero = N::from((PrimitiveType::from(0u8), PrimitiveType::from(1u8)));
     let one = N::from((PrimitiveType::from(1u8), PrimitiveType::from(1u8)));
@@ -381,7 +378,6 @@ where
     for i in 0..xp.len() {
         ann = ann.checked_mul(&n_coins)?;
     }
-    println!("ann = {:?}, d = {:?}", ann, d);
     let mut c = d;
     let mut s = zero;
     let mut xx = zero;
@@ -400,46 +396,23 @@ where
         // c = c * d / (xx * n_coins)
         let c_prev = c;
         c = c.checked_mul(&d)?.checked_div(&xx.checked_mul(&n_coins)?)?;
-        println!(
-            "c[{:?}] = c[{:?}] * d[{:?}] / (xx[{:?}] * n_coins[{:?}])",
-            c, c_prev, d, xx, n_coins
-        );
     }
-    println!("early_c = {:?}", c);
     // c = c * d / (ann * n_coins)
     c = c
         .checked_mul(&d)?
         .checked_div(&ann.checked_mul(&n_coins)?)?;
-    /*
-    c = c
-        .checked_div(&ann)?;
-        */
 
-    println!("c = {:?}", c);
-    //return Some(c);
     // b = s + d / ann // - d
     let b = s.checked_add(&d.checked_div(&ann)?)?;
-    println!(
-        "partial_b[{:?}] = sum[{:?}] + d[{:?}]/ann[{:?}]",
-        b, s, d, ann
-    );
-    //let b = s.checked_sub(&ann.checked_sub(&one)?.checked_mul(&d)?.checked_div(&ann)?)?;
     let mut y = d;
 
     for ii in 0..255 {
-        println!("ii = {:?}", ii);
         y_prev = y;
         // y = (y^2 + c) / (2 * y + b - d)
         y = y
             .checked_mul(&y)?
             .checked_add(&c)?
             .checked_div(&two.checked_mul(&y)?.checked_add(&b)?.checked_sub(&d)?)?;
-        /*
-        y = y
-            .checked_mul(&y)?
-            .checked_add(&c)?
-            .checked_div(&two.checked_mul(&y)?.checked_add(&b)?)?;
-            */
         // Equality with the precision of 1
         if y.cmp(&y_prev) == Ordering::Greater {
             if y.checked_sub(&y_prev)?.cmp(&prec) != Ordering::Greater {
