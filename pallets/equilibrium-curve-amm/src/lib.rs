@@ -250,6 +250,13 @@ where
 {
     let zero = N::from((PrimitiveType::from(0u8), PrimitiveType::from(1u8)));
     let one = N::from((PrimitiveType::from(1u8), PrimitiveType::from(1u8)));
+    let ten = N::from((PrimitiveType::from(10u8), PrimitiveType::from(1u8)));
+
+    //TODO temp code
+    let mut prec = one;
+    for ii in 0..6 {
+        prec = prec.checked_div(&ten)?;
+    }
 
     let n_coins = N::from((
         PrimitiveType::try_from(xp.len()).ok()?,
@@ -295,11 +302,11 @@ where
             )?;
 
         if d.cmp(&d_prev) == Ordering::Greater {
-            if d.checked_sub(&d_prev)?.cmp(&one) != Ordering::Greater {
+            if d.checked_sub(&d_prev)?.cmp(&prec) != Ordering::Greater {
                 return Some(d);
             }
         } else {
-            if d_prev.checked_sub(&d)?.cmp(&one) != Ordering::Greater {
+            if d_prev.checked_sub(&d)?.cmp(&prec) != Ordering::Greater {
                 return Some(d);
             }
         }
@@ -307,6 +314,8 @@ where
 
     None
 }
+
+use sp_std::fmt::Debug;
 
 /// Calculate x[j] if on makes x[i] = x
 ///
@@ -323,11 +332,19 @@ where
         + From<(PrimitiveType, PrimitiveType)>
         + Copy
         + Eq
-        + Ord,
+        + Ord
+        + Debug,
 {
     let zero = N::from((PrimitiveType::from(0u8), PrimitiveType::from(1u8)));
     let one = N::from((PrimitiveType::from(1u8), PrimitiveType::from(1u8)));
     let two = N::from((PrimitiveType::from(2u8), PrimitiveType::from(1u8)));
+    let ten = N::from((PrimitiveType::from(10u8), PrimitiveType::from(1u8)));
+
+    //TODO temp code
+    let mut prec = one;
+    for ii in 0..6 {
+        prec = prec.checked_div(&ten)?;
+    }
 
     let i_us = usize::from(i);
     let j_us = usize::from(j);
@@ -364,6 +381,7 @@ where
     for i in 0..xp.len() {
         ann = ann.checked_mul(&n_coins)?;
     }
+    println!("ann = {:?}, d = {:?}", ann, d);
     let mut c = d;
     let mut s = zero;
     let mut xx = zero;
@@ -373,37 +391,62 @@ where
         if ii == i_us {
             xx = x;
         } else if ii != j_us {
-            xx = xp[i_us];
+            xx = xp[ii];
         } else {
             continue;
         }
         // s = s + xx
         s = s.checked_add(&xx)?;
         // c = c * d / (xx * n_coins)
-        c = c.checked_add(&d)?.checked_div(&xx.checked_mul(&n_coins)?)?;
+        let c_prev = c;
+        c = c.checked_mul(&d)?.checked_div(&xx.checked_mul(&n_coins)?)?;
+        println!(
+            "c[{:?}] = c[{:?}] * d[{:?}] / (xx[{:?}] * n_coins[{:?}])",
+            c, c_prev, d, xx, n_coins
+        );
     }
+    println!("early_c = {:?}", c);
     // c = c * d / (ann * n_coins)
     c = c
         .checked_mul(&d)?
         .checked_div(&ann.checked_mul(&n_coins)?)?;
-    // b = s + d / ann
+    /*
+    c = c
+        .checked_div(&ann)?;
+        */
+
+    println!("c = {:?}", c);
+    //return Some(c);
+    // b = s + d / ann // - d
     let b = s.checked_add(&d.checked_div(&ann)?)?;
+    println!(
+        "partial_b[{:?}] = sum[{:?}] + d[{:?}]/ann[{:?}]",
+        b, s, d, ann
+    );
+    //let b = s.checked_sub(&ann.checked_sub(&one)?.checked_mul(&d)?.checked_div(&ann)?)?;
     let mut y = d;
 
     for ii in 0..255 {
+        println!("ii = {:?}", ii);
         y_prev = y;
         // y = (y^2 + c) / (2 * y + b - d)
         y = y
             .checked_mul(&y)?
             .checked_add(&c)?
             .checked_div(&two.checked_mul(&y)?.checked_add(&b)?.checked_sub(&d)?)?;
+        /*
+        y = y
+            .checked_mul(&y)?
+            .checked_add(&c)?
+            .checked_div(&two.checked_mul(&y)?.checked_add(&b)?)?;
+            */
         // Equality with the precision of 1
         if y.cmp(&y_prev) == Ordering::Greater {
-            if y.checked_sub(&y_prev)?.cmp(&one) != Ordering::Greater {
+            if y.checked_sub(&y_prev)?.cmp(&prec) != Ordering::Greater {
                 return Some(y);
             }
         } else {
-            if y_prev.checked_sub(&y)?.cmp(&one) != Ordering::Greater {
+            if y_prev.checked_sub(&y)?.cmp(&prec) != Ordering::Greater {
                 return Some(y);
             }
         }
@@ -428,12 +471,54 @@ mod math_tests {
             FixedI128::saturating_from_rational(292, 100),
         );
 
+        // expected d is 1.9781953712751776
+        // expected precision is 1e-13
         let delta = result
             .map(|x| {
-                x.saturating_sub(FixedI128::saturating_from_rational(19782, 10_000))
-                    .saturating_abs()
+                x.saturating_sub(FixedI128::saturating_from_rational(
+                    19781953712751776i128,
+                    10_000_000_000_000_000i128,
+                ))
+                .saturating_abs()
             })
-            .map(|x| x.cmp(&FixedI128::saturating_from_rational(1, 100_000)));
+            .map(|x| {
+                x.cmp(&FixedI128::saturating_from_rational(
+                    1i128,
+                    10_000_000_000_000i128,
+                ))
+            });
+        assert_eq!(delta, Some(Ordering::Less));
+    }
+
+    #[test]
+    fn get_y_impl() {
+        let result = get_y(
+            0,
+            1,
+            FixedI128::saturating_from_rational(111, 100),
+            &vec![
+                FixedI128::saturating_from_rational(11, 10),
+                FixedI128::saturating_from_rational(88, 100),
+            ],
+            FixedI128::saturating_from_rational(292, 100),
+        );
+
+        // expected y is 0.8703405416689252
+        // expected precision is 1e-13
+        let delta = result
+            .map(|x| {
+                x.saturating_sub(FixedI128::saturating_from_rational(
+                    8703405416689252i128,
+                    10_000_000_000_000_000i128,
+                ))
+                .saturating_abs()
+            })
+            .map(|x| {
+                x.cmp(&FixedI128::saturating_from_rational(
+                    1,
+                    10_000_000_000_000i128,
+                ))
+            });
         assert_eq!(delta, Some(Ordering::Less));
     }
 }
