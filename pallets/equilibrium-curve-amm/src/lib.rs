@@ -239,7 +239,21 @@ pub trait Const<N> {
     fn one() -> N;
 }
 
-pub fn get_d<N, P, C>(xp: &[N], amp: N) -> Option<N>
+/// ann = amp * n^n
+fn get_ann<N, P>(amp: N, n: usize) -> Option<N>
+where
+    N: CheckedMul + From<P>,
+    P: TryFrom<usize>,
+{
+    let n_coins = N::from(P::try_from(n).ok()?);
+    let mut ann = amp;
+    for i in 0..n {
+        ann = ann.checked_mul(&n_coins)?;
+    }
+    Some(ann)
+}
+
+pub fn get_d<N, P, C>(xp: &[N], ann: N) -> Option<N>
 where
     N: CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + From<P> + Copy + Eq + Ord,
     P: TryFrom<usize>,
@@ -262,12 +276,6 @@ where
     }
 
     let mut d = s;
-
-    // ann = amp * n^n
-    let mut ann = amp;
-    for i in 0..xp.len() {
-        ann = ann.checked_mul(&n_coins)?;
-    }
 
     for i in 0..255 {
         let mut d_p = d;
@@ -309,7 +317,7 @@ where
 /// x1^2 + x1 * (sum' - (A*n^n - 1) * D / (A * n^n)) = D^(n + 1) / (n^(2*n) * prod' * A)
 /// x1^2 + b * x1 = c
 /// x1 = (x1^2 + c) / (2 * x1 + b)
-pub fn get_y<N, P, C>(i: usize, j: usize, x: N, xp: &[N], amp: N) -> Option<N>
+pub fn get_y<N, P, C>(i: usize, j: usize, x: N, xp: &[N], ann: N) -> Option<N>
 where
     N: CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + From<P> + Copy + Eq + Ord,
     P: TryFrom<usize>,
@@ -344,22 +352,17 @@ where
         return None;
     }
 
-    let d = get_d::<N, P, C>(xp, amp)?;
-    // ann = amp * n^n
-    let mut ann = amp;
-    for i in 0..xp.len() {
-        ann = ann.checked_mul(&n_coins)?;
-    }
+    let d = get_d::<N, P, C>(xp, ann)?;
     let mut c = d;
     let mut s = zero;
     let mut xx = zero;
     let mut y_prev = zero;
 
-    for ii in 0..xp.len() {
-        if ii == i {
+    for k in 0..xp.len() {
+        if k == i {
             xx = x;
-        } else if ii != j {
-            xx = xp[ii];
+        } else if k != j {
+            xx = xp[k];
         } else {
             continue;
         }
@@ -378,7 +381,7 @@ where
     let b = s.checked_add(&d.checked_div(&ann)?)?;
     let mut y = d;
 
-    for ii in 0..255 {
+    for k in 0..255 {
         y_prev = y;
         // y = (y^2 + c) / (2 * y + b - d)
         y = y
@@ -424,13 +427,14 @@ mod math_tests {
 
     #[test]
     fn get_d_impl() {
-        let result = get_d::<FixedI128, i128, ConstFixedI128>(
-            &vec![
-                FixedI128::saturating_from_rational(11, 10),
-                FixedI128::saturating_from_rational(88, 100),
-            ],
-            FixedI128::saturating_from_rational(292, 100),
-        );
+        let xp = vec![
+            FixedI128::saturating_from_rational(11, 10),
+            FixedI128::saturating_from_rational(88, 100),
+        ];
+        let amp = FixedI128::saturating_from_rational(292, 100);
+        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
+
+        let result = get_d::<FixedI128, i128, ConstFixedI128>(&xp, ann);
 
         // expected d is 1.9781953712751776
         // expected precision is 1e-13
@@ -453,16 +457,17 @@ mod math_tests {
 
     #[test]
     fn get_y_impl() {
-        let result = get_y::<FixedI128, i128, ConstFixedI128>(
-            0,
-            1,
-            FixedI128::saturating_from_rational(111, 100),
-            &vec![
-                FixedI128::saturating_from_rational(11, 10),
-                FixedI128::saturating_from_rational(88, 100),
-            ],
-            FixedI128::saturating_from_rational(292, 100),
-        );
+        let i = 0;
+        let j = 1;
+        let x = FixedI128::saturating_from_rational(111, 100);
+        let xp = vec![
+            FixedI128::saturating_from_rational(11, 10),
+            FixedI128::saturating_from_rational(88, 100),
+        ];
+        let amp = FixedI128::saturating_from_rational(292, 100);
+        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
+
+        let result = get_y::<FixedI128, i128, ConstFixedI128>(i, j, x, &xp, ann);
 
         // expected y is 0.8703405416689252
         // expected precision is 1e-13
