@@ -233,35 +233,23 @@ use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub};
 use sp_std::cmp::Ordering;
 use sp_std::convert::TryFrom;
 
-pub struct MathError;
+pub trait Const<N> {
+    fn prec() -> N;
+    fn zero() -> N;
+    fn one() -> N;
+}
 
-pub type PrimitiveType = u16;
-
-pub fn get_d<N>(xp: &[N], amp: N) -> Option<N>
+pub fn get_d<N, P, C>(xp: &[N], amp: N) -> Option<N>
 where
-    N: CheckedAdd
-        + CheckedSub
-        + CheckedMul
-        + CheckedDiv
-        + From<(PrimitiveType, PrimitiveType)>
-        + Copy
-        + Eq
-        + Ord,
+    N: CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + From<P> + Copy + Eq + Ord,
+    P: TryFrom<usize>,
+    C: Const<N>,
 {
-    let zero = N::from((PrimitiveType::from(0u8), PrimitiveType::from(1u8)));
-    let one = N::from((PrimitiveType::from(1u8), PrimitiveType::from(1u8)));
-    let ten = N::from((PrimitiveType::from(10u8), PrimitiveType::from(1u8)));
+    let prec = C::prec();
+    let zero = C::zero();
+    let one = C::one();
 
-    //TODO temp code
-    let mut prec = one;
-    for ii in 0..6 {
-        prec = prec.checked_div(&ten)?;
-    }
-
-    let n_coins = N::from((
-        PrimitiveType::try_from(xp.len()).ok()?,
-        PrimitiveType::from(1u8),
-    ));
+    let n_coins = N::from(P::try_from(xp.len()).ok()?);
 
     let mut s = zero;
     let mut d_prev = zero;
@@ -321,35 +309,19 @@ where
 /// x1^2 + x1 * (sum' - (A*n^n - 1) * D / (A * n^n)) = D^(n + 1) / (n^(2*n) * prod' * A)
 /// x1^2 + b * x1 = c
 /// x1 = (x1^2 + c) / (2 * x1 + b)
-pub fn get_y<N>(i: PrimitiveType, j: PrimitiveType, x: N, xp: &[N], amp: N) -> Option<N>
+pub fn get_y<N, P, C>(i: usize, j: usize, x: N, xp: &[N], amp: N) -> Option<N>
 where
-    N: CheckedAdd
-        + CheckedSub
-        + CheckedMul
-        + CheckedDiv
-        + From<(PrimitiveType, PrimitiveType)>
-        + Copy
-        + Eq
-        + Ord,
+    N: CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + From<P> + Copy + Eq + Ord,
+    P: TryFrom<usize>,
+    C: Const<N>,
 {
-    let zero = N::from((PrimitiveType::from(0u8), PrimitiveType::from(1u8)));
-    let one = N::from((PrimitiveType::from(1u8), PrimitiveType::from(1u8)));
-    let two = N::from((PrimitiveType::from(2u8), PrimitiveType::from(1u8)));
-    let ten = N::from((PrimitiveType::from(10u8), PrimitiveType::from(1u8)));
+    let prec = C::prec();
+    let zero = C::zero();
+    let one = C::one();
 
-    //TODO temp code
-    let mut prec = one;
-    for ii in 0..6 {
-        prec = prec.checked_div(&ten)?;
-    }
+    let two = C::one().checked_add(&C::one())?;
 
-    let i_us = usize::from(i);
-    let j_us = usize::from(j);
-
-    let n_coins = N::from((
-        PrimitiveType::try_from(xp.len()).ok()?,
-        PrimitiveType::from(1u8),
-    ));
+    let n_coins = N::from(P::try_from(xp.len()).ok()?);
 
     // Same coin
     if !(i != j) {
@@ -360,7 +332,7 @@ where
         return None;
     }
     // j above n_coins
-    if !(j_us < xp.len()) {
+    if !(j < xp.len()) {
         return None;
     }
 
@@ -368,11 +340,11 @@ where
     if !(i >= 0) {
         return None;
     }
-    if !(i_us < xp.len()) {
+    if !(i < xp.len()) {
         return None;
     }
 
-    let d = get_d(xp, amp)?;
+    let d = get_d::<N, P, C>(xp, amp)?;
     // ann = amp * n^n
     let mut ann = amp;
     for i in 0..xp.len() {
@@ -384,9 +356,9 @@ where
     let mut y_prev = zero;
 
     for ii in 0..xp.len() {
-        if ii == i_us {
+        if ii == i {
             xx = x;
-        } else if ii != j_us {
+        } else if ii != j {
             xx = xp[ii];
         } else {
             continue;
@@ -434,9 +406,25 @@ mod math_tests {
     use sp_runtime::traits::Saturating;
     use sp_runtime::{FixedI128, FixedPointNumber};
 
+    struct ConstFixedI128;
+
+    impl Const<FixedI128> for ConstFixedI128 {
+        fn zero() -> FixedI128 {
+            FixedI128::zero()
+        }
+
+        fn one() -> FixedI128 {
+            FixedI128::one()
+        }
+
+        fn prec() -> FixedI128 {
+            FixedI128::saturating_from_rational(1, 1_000_000)
+        }
+    }
+
     #[test]
     fn get_d_impl() {
-        let result = get_d(
+        let result = get_d::<FixedI128, i128, ConstFixedI128>(
             &vec![
                 FixedI128::saturating_from_rational(11, 10),
                 FixedI128::saturating_from_rational(88, 100),
@@ -465,7 +453,7 @@ mod math_tests {
 
     #[test]
     fn get_y_impl() {
-        let result = get_y(
+        let result = get_y::<FixedI128, i128, ConstFixedI128>(
             0,
             1,
             FixedI128::saturating_from_rational(111, 100),
