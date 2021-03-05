@@ -481,7 +481,7 @@ mod math_tests {
     }
 
     #[test]
-    fn get_d_impl() {
+    fn get_d_successful() {
         let xp = vec![
             FixedI128::saturating_from_rational(11, 10),
             FixedI128::saturating_from_rational(88, 100),
@@ -511,7 +511,7 @@ mod math_tests {
     }
 
     #[test]
-    fn get_y_impl() {
+    fn get_y_successful() {
         let i = 0;
         let j = 1;
         let x = FixedI128::saturating_from_rational(111, 100);

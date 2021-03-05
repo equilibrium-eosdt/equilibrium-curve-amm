@@ -118,10 +118,9 @@ impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for EmptyAssets {
 
 pub struct EmptyUnbalanceHandler;
 
-impl OnUnbalanced<<pallet_balances::Pallet<Test> as Currency<AccountId>>::NegativeImbalance>
-    for EmptyUnbalanceHandler
-{
-}
+type Imbalance = <pallet_balances::Pallet<Test> as Currency<AccountId>>::NegativeImbalance;
+
+impl OnUnbalanced<Imbalance> for EmptyUnbalanceHandler {}
 
 impl curve_amm::Config for Test {
     type Event = Event;
