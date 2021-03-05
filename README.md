@@ -1,6 +1,8 @@
-# Project description
+# Equilibrium Curve AMM Pallet
 
-Substrate-based runtime version of Curve automated market maker will be a 7 week long project which will deliver a following functionality:
+## Overview
+
+Substrate-based runtime version of Curve automated market maker is an ongoing project which will deliver a following functionality:
 
 - Low slippage, high efficiency stablecoin exchange
 
@@ -16,6 +18,56 @@ Consider ETH, for example. There are multiple bridging solutions who promise to 
 
 Curve’s unique stableswap invariant utilizes liquidity much more efficiently compared to all existing DEXes for stablecoins at already several hundred USD TVL (total value locked). Since initial liquidity on Polkadot is hardly going to be very large, proposed efficiency is VERY important for the ecosystem to flourish.
 
+## Installation
+
+Make sure you have done all steps described in [Installation page](https://substrate.dev/docs/en/knowledgebase/getting-started/) of the Substrate Developer Hub.
+
+To build project run:
+
+```bash
+cargo build
+```
+
+## Tests
+
+To run unit tests type:
+
+```bash
+cargo test
+```
+
+
+In case you want run code coverage tool, please follow [instructions](https://github.com/xd009642/tarpaulin#installation) to install tarpaulin.
+
+To create code coverage report run:
+
+```bash
+cargo tarpaulin -v
+```
+
+You can see code coverage report [here](reports/tarpaulin-report.html).
+
+## Running the Node
+
+First of all please ensure that your development chain's state is empty:
+
+```bash
+cargo run --bin node purge-chain --dev
+```
+
+Now you can start the development chain:
+
+```bash
+cargo run --bin node --dev
+```
+
+## Development Roadmap
+
+| Milestone # | Description |
+| --- | --- |
+| 1 | Initial implementation, pool manipulations, invariant calculation |
+| 2 | Actual assets exchange |
+
 ## License
 
-Equilibrium Curve AMM is Apache 2.0 licensed.
+Equilibrium Curve AMM pallet is [Apache 2.0 licensed](LICENSE).
