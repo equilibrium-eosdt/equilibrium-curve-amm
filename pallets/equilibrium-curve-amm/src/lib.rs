@@ -35,7 +35,7 @@ use sp_std::prelude::*;
 pub mod pallet {
     use super::{traits::Assets, PoolInfo};
     use frame_support::{
-        dispatch::{Codec, DispatchResult, DispatchResultWithPostInfo},
+        dispatch::{DispatchResult, DispatchResultWithPostInfo},
         pallet_prelude::*,
         traits::{Currency, ExistenceRequirement, OnUnbalanced, WithdrawReasons},
     };
@@ -44,7 +44,6 @@ pub mod pallet {
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::iter::FromIterator;
     use sp_std::prelude::*;
-    use substrate_fixed::traits::Fixed;
 
     /// Config of Equilibrium Curve Amm pallet
     #[pallet::config]
@@ -79,12 +78,12 @@ pub mod pallet {
     #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
 
-    /// Current pools count
+    /// Current number of pools
     #[pallet::storage]
     #[pallet::getter(fn pool_count)]
     pub type PoolCount<T: Config> = StorageValue<_, u32, ValueQuery>;
 
-    /// All pools infos
+    /// Existing pools
     #[pallet::storage]
     #[pallet::getter(fn pools)]
     pub type Pools<T: Config> =
@@ -188,11 +187,13 @@ pub mod pallet {
     }
 }
 
+/// Module that contain traits which must be implemented somewhere in the runtime
+/// in order to equilibrium_curve_amm pallet can work properly.
 pub mod traits {
     use frame_support::dispatch::{DispatchError, DispatchResult};
 
-    /// We need to operate with custom Assets, so we will create this trait and simple
-    /// implementation for it. Other projects can add adapters to adapt their realization.
+    /// Pallet equilibrium_curve_amm should interact with custom Assets.
+    /// In order to do this it relies on `Asset` trait implementation.
     pub trait Assets<AssetId, Balance, AccountId> {
         /// Creates new asset
         fn create_asset() -> Result<AssetId, DispatchError>;
@@ -231,9 +232,13 @@ use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub};
 use sp_std::cmp::Ordering;
 use sp_std::convert::TryFrom;
 
+/// Constants required for math calculations
 pub trait Const<N> {
+    /// Value that represents precision used for fixed-point iteration method for type `N`
     fn prec() -> N;
+    /// Value that represents 0 for type `N`
     fn zero() -> N;
+    /// Value that represents 1 for type `N`
     fn one() -> N;
 }
 
@@ -246,7 +251,7 @@ where
 {
     let n_coins = N::from(P::try_from(n).ok()?);
     let mut ann = amp;
-    for i in 0..n {
+    for _ in 0..n {
         ann = ann.checked_mul(&n_coins)?;
     }
     Some(ann)
@@ -277,7 +282,6 @@ where
     let n_coins = N::from(P::try_from(xp.len()).ok()?);
 
     let mut s = zero;
-    let mut d_prev = zero;
 
     for x in xp.iter() {
         s = s.checked_add(x)?;
@@ -288,7 +292,7 @@ where
 
     let mut d = s;
 
-    for i in 0..255 {
+    for _ in 0..255 {
         let mut d_p = d;
         for x in xp.iter() {
             // d_p = d_p * d / (x * n_coins)
@@ -296,7 +300,7 @@ where
                 .checked_mul(&d)?
                 .checked_div(&x.checked_mul(&n_coins)?)?;
         }
-        d_prev = d;
+        let d_prev = d;
         // d = (ann * s + d_p * n_coins) * d / ((ann - 1) * d + (n_coins + 1) * d_p)
         d = ann
             .checked_mul(&s)?
@@ -381,7 +385,6 @@ where
 {
     let prec = C::prec();
     let zero = C::zero();
-    let one = C::one();
 
     let two = C::one().checked_add(&C::one())?;
 
@@ -403,7 +406,6 @@ where
 
     let mut c = d;
     let mut s = zero;
-    let mut y_prev = zero;
 
     // Calculate s and c
     // p is implicitly calculated as part of c
@@ -420,7 +422,6 @@ where
         // s = s + x_k
         s = s.checked_add(&x_k)?;
         // c = c * d / (x_k * n)
-        let c_prev = c;
         c = c.checked_mul(&d)?.checked_div(&x_k.checked_mul(&n)?)?;
     }
     // c = c * d / (ann * n)
@@ -434,8 +435,8 @@ where
     let b = s.checked_add(&d.checked_div(&ann)?)?;
     let mut y = d;
 
-    for k in 0..255 {
-        y_prev = y;
+    for _ in 0..255 {
+        let y_prev = y;
         // y = (y^2 + c) / (2 * y + b - d)
         // Subtract d to calculate b finally
         y = y
