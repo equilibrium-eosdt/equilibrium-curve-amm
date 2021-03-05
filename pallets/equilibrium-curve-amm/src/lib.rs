@@ -237,7 +237,8 @@ pub trait Const<N> {
     fn one() -> N;
 }
 
-/// ann = amp * n^n
+/// Find `ann = amp * n^n` where `amp` - amplification coefficient,
+/// `n` - number of coins.
 fn get_ann<N, P>(amp: N, n: usize) -> Option<N>
 where
     N: CheckedMul + From<P>,
@@ -251,6 +252,18 @@ where
     Some(ann)
 }
 
+/// Find `d` preserving StableSwap invariant.
+/// Here `d` - total amount of coins when they have an equal price,
+/// `xp` - coin prices, `ann` is amplification coefficient multiplied by `n^n`,
+/// where `n` is number of coins.
+///
+/// # Notes
+///
+/// Converging solution:
+///
+/// ```latex
+/// $$d_{j+1} = \frac{a \cdot n^n \cdot \sum x_i - \frac{d_j^{n+1}}{n^n \cdot \prod x_i}}{a \cdot n^n - 1} $$
+/// ```
 pub fn get_d<N, P, C>(xp: &[N], ann: N) -> Option<N>
 where
     N: CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + From<P> + Copy + Eq + Ord,
@@ -305,13 +318,13 @@ where
             }
         }
     }
-
+    // Convergence typically occurs in 4 rounds or less, this should be unreachable!
     None
 }
 
-/// Calculate `xp[j]` if one makes `x[i] = x` preserving StableSwap invariant.
-/// Here `ann` is amplification coefficient multiplied by `n^n`, where
-/// `n` is length of `xp`.
+/// Find new price `xp[j]` if one changes some other price `x[i]` to value `x` preserving StableSwap invariant.
+/// Here `xp` - coin prices, `ann` is amplification coefficient multiplied by `n^n`, where
+/// `n` is number of coins.
 ///
 /// # Explanation
 ///
