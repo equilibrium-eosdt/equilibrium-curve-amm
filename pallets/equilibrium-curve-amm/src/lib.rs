@@ -511,6 +511,17 @@ mod math_tests {
     }
 
     #[test]
+    fn get_d_empty() {
+        let xp = vec![];
+        let amp = FixedI128::saturating_from_rational(292, 100);
+        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
+
+        let result = get_d::<FixedI128, i128, ConstFixedI128>(&xp, ann);
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
     fn get_y_successful() {
         let i = 0;
         let j = 1;
@@ -541,5 +552,56 @@ mod math_tests {
                 ))
             });
         assert_eq!(delta, Some(Ordering::Less));
+    }
+
+    #[test]
+    fn get_d_same_coin() {
+        let i = 1;
+        let j = 1;
+        let x = FixedI128::saturating_from_rational(111, 100);
+        let xp = vec![
+            FixedI128::saturating_from_rational(11, 10),
+            FixedI128::saturating_from_rational(88, 100),
+        ];
+        let amp = FixedI128::saturating_from_rational(292, 100);
+        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
+
+        let result = get_y::<FixedI128, i128, ConstFixedI128>(i, j, x, &xp, ann);
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn get_d_i_greater_than_n() {
+        let i = 33;
+        let j = 1;
+        let x = FixedI128::saturating_from_rational(111, 100);
+        let xp = vec![
+            FixedI128::saturating_from_rational(11, 10),
+            FixedI128::saturating_from_rational(88, 100),
+        ];
+        let amp = FixedI128::saturating_from_rational(292, 100);
+        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
+
+        let result = get_y::<FixedI128, i128, ConstFixedI128>(i, j, x, &xp, ann);
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn get_d_j_greater_than_n() {
+        let i = 1;
+        let j = 33;
+        let x = FixedI128::saturating_from_rational(111, 100);
+        let xp = vec![
+            FixedI128::saturating_from_rational(11, 10),
+            FixedI128::saturating_from_rational(88, 100),
+        ];
+        let amp = FixedI128::saturating_from_rational(292, 100);
+        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
+
+        let result = get_y::<FixedI128, i128, ConstFixedI128>(i, j, x, &xp, ann);
+
+        assert_eq!(result, None);
     }
 }
