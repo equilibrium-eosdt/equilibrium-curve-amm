@@ -309,12 +309,57 @@ where
     None
 }
 
-/// Calculate x[j] if on makes x[i] = x
+/// Calculate `xp[j]` if one makes `x[i] = x` preserving StableSwap invariant.
+/// Here `ann` is amplification coefficient multiplied by `n^n`, where
+/// `n` is length of `xp`.
 ///
-/// Done by solving quadratic equation iteratively.
-/// x1^2 + x1 * (sum' - (A*n^n - 1) * D / (A * n^n)) = D^(n + 1) / (n^(2*n) * prod' * A)
-/// x1^2 + b * x1 = c
-/// x1 = (x1^2 + c) / (2 * x1 + b)
+/// # Explanation
+///
+/// Here we give some explanations of how the function works and what its variables are used for.
+///
+/// ```latex
+/// Suppose we have $n$ coins with prices $x_1, \ldots, x_n$. Let $S$ be equal to $\sum_{k=1}^{n}
+/// x_k$ and $P$ equal to $\prod_{k=1}^n x_k$.
+/// Let's write StableSwap invariant:
+/// $$a \cdot n^n \cdot S + d = a \cdot n^n \cdot d + \frac{d^{n+1}}{n^n \cdot P}$$
+/// where $a$ - amplification coefficient, $d$ - total amount of coins when they have an equal
+/// price.
+///
+/// We know index $i$ of price that changed to value $x$.  No other parameters have changed and
+/// StableSwap invariant is preserved. We want to find a new value of price with a given index $j$.
+/// Let's denote this value $x_j$ as $y$. So for $S$ and $P$ we can write following:
+/// $$S = x_1 + x_2 + \ldots + x_{i-1} + x+x_{i+1} + \ldots + x_{j-1} + y + x_{j+1} + \ldots +
+/// x_n$$
+/// $$P = x_1 \cdot x_2 \cdot \ldots \cdot x_{i-1} \cdot x \cdot x_{i+1} \cdot \ldots \cdot x_{j-1}
+/// \cdot y \cdot x_{j+1} \cdot \ldots \cdot x_n$$
+///
+/// Let sum of all known terms in $S$ be $s$ and product of all known factors in $P$ be $p$. So we
+/// can rewrite $S$ and $P$:
+/// $$S = s + y$$
+/// $$P = p \cdot y$$
+///
+/// Now we can substitute these values into StableSwap invariant:
+/// $$a \cdot n^n \cdot (s + y) + d = a \cdot n^n \cdot d + \frac{d^{n+1}}{n^n \cdot p \cdot y}$$
+///
+/// It's obvious that $y>0$, $a>0$ and $n>0$. So we can rewrite previous equation as a quadratic
+/// equation with respect to $y$:
+/// $$y^2 + \left( s + \frac{d}{a \cdot n^n} - d \right)y = \frac{d^{n+1}}{a \cdot n^{2n} \cdot
+/// p}$$
+///
+/// Let's introduce variable $ann$ that equals to $a \cdot n^n$. With $ann$ in mind rewrite
+/// previous equation:
+/// $$y^2 + \left( s + \frac{d}{ann} - d \right)y = \frac{d^{n+1}}{ann \cdot n^n \cdot p}$$
+///
+/// Let's introduce $b$ and $c$ such that:
+/// $$b = s + \frac{d}{ann} - d$$
+/// $$c = \frac{d^{n+1}}{ann \cdot n^n \cdot p} $$
+///
+/// Now we can rewrite our quadratic equation as:
+/// $$y^2 + by = c$$
+///
+/// To solve this equation numerically using fixed-point iteration method let's rewrite it as:
+/// $$y = \frac{y^2 + c}{2y + b}$$
+/// ```
 pub fn get_y<N, P, C>(i: usize, j: usize, x: N, xp: &[N], ann: N) -> Option<N>
 where
     N: CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + From<P> + Copy + Eq + Ord,
@@ -327,23 +372,14 @@ where
 
     let two = C::one().checked_add(&C::one())?;
 
-    let n_coins = N::from(P::try_from(xp.len()).ok()?);
+    let n = N::from(P::try_from(xp.len()).ok()?);
 
     // Same coin
     if !(i != j) {
         return None;
     }
-    // j below zero
-    if !(j >= 0) {
-        return None;
-    }
-    // j above n_coins
+    // j above n
     if !(j < xp.len()) {
-        return None;
-    }
-
-    // Should be unreachable, but good for safety
-    if !(i >= 0) {
         return None;
     }
     if !(i < xp.len()) {
@@ -351,42 +387,50 @@ where
     }
 
     let d = get_d::<N, P, C>(xp, ann)?;
+
     let mut c = d;
     let mut s = zero;
-    let mut xx = zero;
     let mut y_prev = zero;
 
+    // Calculate s and c
+    // p is implicitly calculated as part of c
+    // note that loop makes n - 1 iterations
     for k in 0..xp.len() {
+        let x_k;
         if k == i {
-            xx = x;
+            x_k = x;
         } else if k != j {
-            xx = xp[k];
+            x_k = xp[k];
         } else {
             continue;
         }
-        // s = s + xx
-        s = s.checked_add(&xx)?;
-        // c = c * d / (xx * n_coins)
+        // s = s + x_k
+        s = s.checked_add(&x_k)?;
+        // c = c * d / (x_k * n)
         let c_prev = c;
-        c = c.checked_mul(&d)?.checked_div(&xx.checked_mul(&n_coins)?)?;
+        c = c.checked_mul(&d)?.checked_div(&x_k.checked_mul(&n)?)?;
     }
-    // c = c * d / (ann * n_coins)
-    c = c
-        .checked_mul(&d)?
-        .checked_div(&ann.checked_mul(&n_coins)?)?;
+    // c = c * d / (ann * n)
+    // At this step we have d^n in the numerator of c
+    // and n^(n-1) in its denominator.
+    // So we multiplying it by remaining d/n
+    c = c.checked_mul(&d)?.checked_div(&ann.checked_mul(&n)?)?;
 
-    // b = s + d / ann // - d
+    // b = s + d / ann
+    // We subtract d later
     let b = s.checked_add(&d.checked_div(&ann)?)?;
     let mut y = d;
 
     for k in 0..255 {
         y_prev = y;
         // y = (y^2 + c) / (2 * y + b - d)
+        // Subtract d to calculate b finally
         y = y
             .checked_mul(&y)?
             .checked_add(&c)?
             .checked_div(&two.checked_mul(&y)?.checked_add(&b)?.checked_sub(&d)?)?;
-        // Equality with the precision of 1
+
+        // Equality with the specified precision
         if y.cmp(&y_prev) == Ordering::Greater {
             if y.checked_sub(&y_prev)?.cmp(&prec) != Ordering::Greater {
                 return Some(y);
