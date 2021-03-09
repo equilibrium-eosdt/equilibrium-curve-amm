@@ -259,7 +259,7 @@ where
 
 /// Find `d` preserving StableSwap invariant.
 /// Here `d` - total amount of coins when they have an equal price,
-/// `xp` - coin prices, `ann` is amplification coefficient multiplied by `n^n`,
+/// `xp` - coin amounts, `ann` is amplification coefficient multiplied by `n^n`,
 /// where `n` is number of coins.
 ///
 /// # Notes
@@ -326,8 +326,8 @@ where
     None
 }
 
-/// Find new price `xp[j]` if one changes some other price `x[i]` to value `x` preserving StableSwap invariant.
-/// Here `xp` - coin prices, `ann` is amplification coefficient multiplied by `n^n`, where
+/// Find new amount `xp[j]` if one changes some other amount `x[i]` to value `x` preserving StableSwap invariant.
+/// Here `xp` - coin amounts, `ann` is amplification coefficient multiplied by `n^n`, where
 /// `n` is number of coins.
 ///
 /// # Explanation
@@ -335,15 +335,15 @@ where
 /// Here we give some explanations of how the function works and what its variables are used for.
 ///
 /// ```latex
-/// Suppose we have $n$ coins with prices $x_1, \ldots, x_n$. Let $S$ be equal to $\sum_{k=1}^{n}
+/// Suppose we have $n$ coins with amounts $x_1, \ldots, x_n$. Let $S$ be equal to $\sum_{k=1}^{n}
 /// x_k$ and $P$ equal to $\prod_{k=1}^n x_k$.
 /// Let's write StableSwap invariant:
 /// $$a \cdot n^n \cdot S + d = a \cdot n^n \cdot d + \frac{d^{n+1}}{n^n \cdot P}$$
 /// where $a$ - amplification coefficient, $d$ - total amount of coins when they have an equal
 /// price.
 ///
-/// We know index $i$ of price that changed to value $x$.  No other parameters have changed and
-/// StableSwap invariant is preserved. We want to find a new value of price with a given index $j$.
+/// We know index $i$ of amount that changed to value $x$.  No other parameters have changed and
+/// StableSwap invariant is preserved. We want to find a new amount with a given index $j$.
 /// Let's denote this value $x_j$ as $y$. So for $S$ and $P$ we can write following:
 /// $$S = x_1 + x_2 + \ldots + x_{i-1} + x+x_{i+1} + \ldots + x_{j-1} + y + x_{j+1} + \ldots +
 /// x_n$$
