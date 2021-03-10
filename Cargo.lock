@@ -1315,6 +1315,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6576a1755ddffd988788025e75bce9e74b018f7cc226198fe931d077911c6d7e"
 
 [[package]]
+name = "equilibrium-assets"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "parity-scale-codec",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "equilibrium-curve-amm"
 version = "0.1.0"
 dependencies = [
@@ -3555,6 +3571,7 @@ dependencies = [
 name = "node-runtime"
 version = "0.1.0"
 dependencies = [
+ "equilibrium-assets",
  "equilibrium-curve-amm",
  "frame-benchmarking",
  "frame-executive",
@@ -3563,7 +3580,6 @@ dependencies = [
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
  "hex-literal",
- "pallet-assets",
  "pallet-aura",
  "pallet-balances",
  "pallet-grandpa",
@@ -3724,20 +3740,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ff55baddef9e4ad00f88b6c743a2a8062d4c6ade126c2a528644b8e444d52ce"
 dependencies = [
  "stable_deref_trait",
-]
-
-[[package]]
-name = "pallet-assets"
-version = "3.0.0"
-source = "git+https://github.com/paritytech/substrate.git?tag=v3.0.0#49a4103f4bfef55be20a5c6d26e18ff3003c3353"
-dependencies = [
- "frame-benchmarking",
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "serde",
- "sp-runtime",
- "sp-std",
 ]
 
 [[package]]
