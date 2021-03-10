@@ -262,13 +262,36 @@ impl pallet_sudo::Config for Runtime {
     type Call = Call;
 }
 
+type AssetId = u32;
+
+parameter_types! {
+    pub const AssetDepositBase: Balance = 1;
+    pub const AssetDepositPerZombie: Balance = 1;
+    pub const StringLimit: u32 = 50;
+    pub const MetadataDepositBase: Balance = 1;
+    pub const MetadataDepositPerByte: Balance = 1;
+}
+
+impl pallet_assets::Config for Runtime {
+    type Event = Event;
+    type Balance = Balance;
+    type AssetId = AssetId;
+    type Currency = Balances;
+    type ForceOrigin = frame_system::EnsureRoot<AccountId>;
+    type AssetDepositBase = AssetDepositBase;
+    type AssetDepositPerZombie = AssetDepositPerZombie;
+    type StringLimit = StringLimit;
+    type MetadataDepositBase = MetadataDepositBase;
+    type MetadataDepositPerByte = MetadataDepositPerByte;
+    type WeightInfo = pallet_assets::weights::SubstrateWeight<Runtime>;
+}
+
 parameter_types! {
     pub const CreationFee: Balance = 999;
     pub const CurveAmmModuleId: ModuleId = ModuleId(*b"eq/crvam");
 }
 
 type Number = sp_runtime::FixedI128;
-type AssetId = i64;
 
 pub struct EmptyAssets;
 
@@ -336,6 +359,7 @@ construct_runtime!(
         Timestamp: pallet_timestamp::{Module, Call, Storage, Inherent},
         Aura: pallet_aura::{Module, Config<T>},
         Grandpa: pallet_grandpa::{Module, Call, Storage, Config, Event},
+        Assets: pallet_assets::{Module, Call, Storage, Event<T>},
         Balances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
         TransactionPayment: pallet_transaction_payment::{Module, Storage},
         Sudo: pallet_sudo::{Module, Call, Config<T>, Storage, Event<T>},

@@ -13,6 +13,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
 
 pallet-aura = { version = "3.0.0", default-features = false, git = 'https://github.com/paritytech/substrate.git', tag = "v3.0.0" }
+pallet-assets = { version = "3.0.0", default-features = false, git = 'https://github.com/paritytech/substrate.git', tag = "v3.0.0" }
 pallet-balances = { version = "3.0.0", default-features = false, git = 'https://github.com/paritytech/substrate.git', tag = "v3.0.0" }
 frame-support = { version = "3.0.0", default-features = false, git = 'https://github.com/paritytech/substrate.git', tag = "v3.0.0" }
 pallet-grandpa = { version = "3.0.0", default-features = false, git = 'https://github.com/paritytech/substrate.git', tag = "v3.0.0" }
@@ -62,6 +63,7 @@ std = [
 	"frame-executive/std",
 	"frame-support/std",
 	"pallet-aura/std",
+	"pallet-assets/std",
 	"pallet-balances/std",
 	"pallet-grandpa/std",
 	"pallet-randomness-collective-flip/std",
@@ -84,7 +86,6 @@ std = [
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",
 	"equilibrium-curve-amm/std",
-    #"substrate-fixed/std",
 ]
 runtime-benchmarks = [
 	"sp-runtime/runtime-benchmarks",
