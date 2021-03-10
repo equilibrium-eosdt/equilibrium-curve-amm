@@ -1318,6 +1318,7 @@ checksum = "6576a1755ddffd988788025e75bce9e74b018f7cc226198fe931d077911c6d7e"
 name = "equilibrium-assets"
 version = "0.1.0"
 dependencies = [
+ "equilibrium-curve-amm",
  "frame-benchmarking",
  "frame-support",
  "frame-system",

@@ -293,39 +293,6 @@ parameter_types! {
 
 type Number = sp_runtime::FixedI128;
 
-pub struct EmptyAssets;
-
-impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for EmptyAssets {
-    fn create_asset() -> Result<AssetId, DispatchError> {
-        Ok(0)
-    }
-
-    fn mint(asset: AssetId, dest: AccountId, amount: Balance) -> DispatchResult {
-        Ok(())
-    }
-
-    fn burn(asset: AssetId, dest: AccountId, amount: Balance) -> DispatchResult {
-        Ok(())
-    }
-
-    fn transfer(
-        asset: AssetId,
-        source: AccountId,
-        dest: AccountId,
-        amount: Balance,
-    ) -> DispatchResult {
-        Ok(())
-    }
-
-    fn balance(asset: AssetId, who: AccountId) -> Balance {
-        0
-    }
-
-    fn total_issuance(asset: AssetId) -> Balance {
-        0
-    }
-}
-
 pub struct EmptyUnbalanceHandler;
 
 impl OnUnbalanced<<pallet_balances::Pallet<Runtime> as Currency<AccountId>>::NegativeImbalance>
@@ -340,7 +307,7 @@ impl equilibrium_curve_amm::Config for Runtime {
     type Balance = Balance;
     type Currency = pallet_balances::Pallet<Runtime>;
     type CreationFee = CreationFee;
-    type Assets = EmptyAssets;
+    type Assets = equilibrium_assets::Pallet<Runtime>;
     type OnUnbalanced = EmptyUnbalanceHandler;
     type ModuleId = CurveAmmModuleId;
 

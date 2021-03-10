@@ -74,5 +74,4 @@ std = [
     "sp-std/std",
 	"sp-runtime/std",
     "substrate-fixed/std",
-	"pallet-balances/std",
 ]
