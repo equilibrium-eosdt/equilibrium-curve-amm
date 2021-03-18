@@ -37,7 +37,7 @@ use traits::Const;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::{traits::Assets, traits::Const, PoolInfo};
+    use super::{traits::Assets, traits::Const, PoolId, PoolInfo};
     use frame_support::{
         dispatch::{DispatchResult, DispatchResultWithPostInfo},
         pallet_prelude::*,
@@ -79,6 +79,7 @@ pub mod pallet {
         /// Number type for underlying calculations
         type Number: Parameter
             + From<Permill>
+            + From<Self::Balance>
             + CheckedAdd
             + CheckedSub
             + CheckedMul
@@ -101,13 +102,13 @@ pub mod pallet {
     /// Current number of pools
     #[pallet::storage]
     #[pallet::getter(fn pool_count)]
-    pub type PoolCount<T: Config> = StorageValue<_, u32, ValueQuery>;
+    pub type PoolCount<T: Config> = StorageValue<_, PoolId, ValueQuery>;
 
     /// Existing pools
     #[pallet::storage]
     #[pallet::getter(fn pools)]
     pub type Pools<T: Config> =
-        StorageMap<_, Blake2_128Concat, u32, PoolInfo<T::AssetId, T::Number>>;
+        StorageMap<_, Blake2_128Concat, PoolId, PoolInfo<T::AssetId, T::Number>>;
 
     /// Event type for Equilibrium Curve AMM pallet
     #[pallet::event]
@@ -115,7 +116,7 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Pool with specified id created successfully
-        PoolCreated(T::AccountId, u32),
+        PoolCreated(T::AccountId, PoolId),
     }
 
     /// Error type for Equilibrium Curve AMM pallet
@@ -131,6 +132,10 @@ pub mod pallet {
         NotEnoughAssets,
         /// Some provided assets are not unique
         DuplicateAssets,
+        /// Pool with specified id is not found
+        PoolNotFound,
+        /// Error occured while performing math calculations
+        Math,
     }
 
     #[pallet::hooks]
@@ -168,11 +173,11 @@ pub mod pallet {
             T::OnUnbalanced::on_unbalanced(imbalance);
 
             // Add new pool
-            let pool_key =
-                PoolCount::<T>::try_mutate(|pool_count| -> Result<u32, DispatchError> {
-                    let pool_key = *pool_count;
+            let pool_id =
+                PoolCount::<T>::try_mutate(|pool_count| -> Result<PoolId, DispatchError> {
+                    let pool_id = *pool_count;
 
-                    Pools::<T>::try_mutate_exists(pool_key, |maybe_pool_info| -> DispatchResult {
+                    Pools::<T>::try_mutate_exists(pool_id, |maybe_pool_info| -> DispatchResult {
                         // We expect that PoolInfos have sequential keys.
                         // No PoolInfo can have key greater or equal to PoolCount
                         maybe_pool_info
@@ -193,14 +198,34 @@ pub mod pallet {
                         Ok(())
                     })?;
 
-                    *pool_count = pool_key
+                    *pool_count = pool_id
                         .checked_add(1)
                         .ok_or(Error::<T>::InconsistentStorage)?;
 
-                    Ok(pool_key)
+                    Ok(pool_id)
                 })?;
 
-            Self::deposit_event(Event::PoolCreated(who.clone(), pool_key));
+            Self::deposit_event(Event::PoolCreated(who.clone(), pool_id));
+
+            Ok(().into())
+        }
+
+        /// Deposit coins into the pool.
+        /// `amounts` - list of amounts of coins to deposit.
+        /// `min_mint_amount` - minimum amout of LP tokens to mint from the deposit.
+        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        pub fn add_liquidity(
+            origin: OriginFor<T>,
+            pool_id: PoolId,
+            amounts: Vec<T::Number>,
+            min_mint_amount: T::Number,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+
+            let pool = Self::pools(pool_id).ok_or(Error::<T>::PoolNotFound)?;
+
+            let ann =
+                Self::get_ann(pool.amplification, pool.assets.len()).ok_or(Error::<T>::Math)?;
 
             Ok(().into())
         }
@@ -457,6 +482,9 @@ pub mod traits {
     }
 }
 
+/// Type that represents pool id
+pub type PoolId = u32;
+
 /// Storage record type for a pool
 #[derive(Encode, Decode, Clone, Default, PartialEq, Eq, Debug)]
 pub struct PoolInfo<AssetId, Number> {
@@ -468,4 +496,5 @@ pub struct PoolInfo<AssetId, Number> {
     amplification: Number,
     /// Amount of the fee pool charges for the exchange
     fee: Permill,
+    //balances: Vec<
 }

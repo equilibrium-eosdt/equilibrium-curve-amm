@@ -11,6 +11,7 @@ use pallet_grandpa::{AuthorityId as GrandpaId, AuthorityList as GrandpaAuthority
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
+use sp_runtime::traits::Saturating;
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, NumberFor, Verify,
 };
@@ -19,12 +20,11 @@ use sp_runtime::{
     transaction_validity::{TransactionSource, TransactionValidity},
     ApplyExtrinsicResult, ModuleId, MultiSignature,
 };
+use sp_runtime::{FixedPointNumber, FixedU128};
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use sp_runtime::traits::Saturating;
-use sp_runtime::{FixedI128, FixedPointNumber};
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -293,21 +293,21 @@ parameter_types! {
     pub const CurveAmmModuleId: ModuleId = ModuleId(*b"eq/crvam");
 }
 
-type Number = FixedI128;
-type IntermediateNumber = i128;
-pub struct ConstFixedI128;
+type Number = FixedU128;
+type IntermediateNumber = u128;
+pub struct ConstFixedU128;
 
-impl equilibrium_curve_amm::traits::Const<FixedI128> for ConstFixedI128 {
-    fn zero() -> FixedI128 {
-        FixedI128::zero()
+impl equilibrium_curve_amm::traits::Const<FixedU128> for ConstFixedU128 {
+    fn zero() -> FixedU128 {
+        FixedU128::zero()
     }
 
-    fn one() -> FixedI128 {
-        FixedI128::one()
+    fn one() -> FixedU128 {
+        FixedU128::one()
     }
 
-    fn prec() -> FixedI128 {
-        FixedI128::saturating_from_rational(1, 1_000_000)
+    fn prec() -> FixedU128 {
+        FixedU128::saturating_from_rational(1, 1_000_000)
     }
 }
 
@@ -331,7 +331,7 @@ impl equilibrium_curve_amm::Config for Runtime {
 
     type Number = Number;
     type IntermediateNumber = IntermediateNumber;
-    type Const = ConstFixedI128;
+    type Const = ConstFixedU128;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
