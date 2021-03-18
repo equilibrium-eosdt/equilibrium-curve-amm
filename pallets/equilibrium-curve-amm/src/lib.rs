@@ -39,7 +39,7 @@ use traits::Const;
 pub mod pallet {
     use super::{traits::Assets, traits::Const, PoolId, PoolInfo};
     use frame_support::{
-        dispatch::{DispatchResult, DispatchResultWithPostInfo},
+        dispatch::{Codec, DispatchResult, DispatchResultWithPostInfo},
         pallet_prelude::*,
         traits::{Currency, ExistenceRequirement, OnUnbalanced, WithdrawReasons},
     };
@@ -60,7 +60,7 @@ pub mod pallet {
         /// Identificator type of Asset
         type AssetId: Parameter + Ord + Copy;
         /// The balance of an account
-        type Balance: Encode;
+        type Balance: Parameter + Codec + Copy;
         /// External implementation for required opeartions with assets
         type Assets: super::traits::Assets<Self::AssetId, Self::Balance, Self::AccountId>;
         /// Standart balances pallet for utility token or adapter
@@ -81,6 +81,7 @@ pub mod pallet {
             + Default
             + From<Permill>
             + From<Self::Balance>
+            + Into<Self::Balance>
             + CheckedAdd
             + CheckedSub
             + CheckedMul
@@ -118,6 +119,14 @@ pub mod pallet {
     pub enum Event<T: Config> {
         /// Pool with specified id created successfully
         PoolCreated(T::AccountId, PoolId),
+        LiquidityAdded(
+            T::AccountId,
+            PoolId,
+            Vec<T::Balance>,
+            Vec<T::Balance>,
+            T::Number,
+            T::Balance,
+        ),
     }
 
     /// Error type for Equilibrium Curve AMM pallet
@@ -137,6 +146,10 @@ pub mod pallet {
         PoolNotFound,
         /// Error occured while performing math calculations
         Math,
+        /// Specified asset amount is wrong
+        WrongAssetAmount,
+        /// Minimum specified amount is not reached
+        MinAmountNotReached,
     }
 
     #[pallet::hooks]
@@ -151,6 +164,7 @@ pub mod pallet {
             assets: Vec<T::AssetId>,
             amplification: T::Number,
             fee: Permill,
+            admin_fee: Permill,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
@@ -196,6 +210,7 @@ pub mod pallet {
                             assets: assets,
                             amplification,
                             fee,
+                            admin_fee,
                             balances,
                         });
 
@@ -221,17 +236,154 @@ pub mod pallet {
         pub fn add_liquidity(
             origin: OriginFor<T>,
             pool_id: PoolId,
-            amounts: Vec<T::Number>,
+            amounts: Vec<T::Balance>,
             min_mint_amount: T::Number,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            let pool = Self::pools(pool_id).ok_or(Error::<T>::PoolNotFound)?;
+            let zero = T::Const::zero();
 
-            let ann =
-                Self::get_ann(pool.amplification, pool.assets.len()).ok_or(Error::<T>::Math)?;
+            let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
+                Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
+                    let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
 
-            let old_balances = pool.balances.clone();
+                    let n_coins = pool.assets.len();
+
+                    ensure!(
+                        n_coins == pool.balances.len(),
+                        Error::<T>::InconsistentStorage
+                    );
+
+                    let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+
+                    let old_balances = pool.balances.clone();
+
+                    let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
+
+                    let token_supply = T::Number::from(T::Assets::total_issuance(pool.pool_asset));
+                    let mut new_balances = old_balances.clone();
+                    let n_amounts = amounts
+                        .iter()
+                        .copied()
+                        .map(T::Number::from)
+                        .collect::<Vec<_>>();
+                    for i in 0..n_coins {
+                        if token_supply == zero {
+                            ensure!(n_amounts[i] > zero, Error::<T>::WrongAssetAmount);
+                        }
+                        new_balances[i] = new_balances[i]
+                            .checked_add(&n_amounts[i])
+                            .ok_or(Error::<T>::Math)?;
+                    }
+
+                    let d1 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
+                    ensure!(d1 > d0, Error::<T>::WrongAssetAmount);
+
+                    let mut fees = vec![zero; n_coins];
+                    let mut mint_amount = zero;
+
+                    // Only account for fees if we are not the first to deposit
+                    if token_supply > zero {
+                        // Deposit x + withdraw y would charge about same
+                        // fees as a swap. Otherwise, one could exchange w/o paying fees.
+                        // And this formula leads to exactly that equality
+                        // fee = pool.fee * n_coins / (4 * (n_coins - 1))
+                        let fee = (|| {
+                            let n_coins =
+                                T::Number::from(T::IntermediateNumber::try_from(n_coins).ok()?);
+                            let one = T::Const::one();
+                            let four = one
+                                .checked_add(&one)?
+                                .checked_add(&one)?
+                                .checked_add(&one)?;
+
+                            T::Number::from(pool.fee)
+                                .checked_mul(&n_coins)?
+                                .checked_div(&four.checked_mul(&n_coins.checked_sub(&one)?)?)
+                        })()
+                        .ok_or(Error::<T>::Math)?;
+                        let admin_fee = T::Number::from(pool.admin_fee);
+                        for i in 0..n_coins {
+                            // ideal_balance = d1 * old_balances[i] / d0
+                            let ideal_balance =
+                                (|| d1.checked_mul(&old_balances[i])?.checked_div(&d0))()
+                                    .ok_or(Error::<T>::Math)?;
+
+                            let new_balance = new_balances[i];
+
+                            // difference = abs(ideal_balance - new_balance)
+                            let difference = (if ideal_balance > new_balance {
+                                ideal_balance.checked_sub(&new_balance)
+                            } else {
+                                new_balance.checked_sub(&ideal_balance)
+                            })
+                            .ok_or(Error::<T>::Math)?;
+
+                            fees[i] = fee.checked_mul(&difference).ok_or(Error::<T>::Math)?;
+                            // self.balances[i] = new_balance - (fees[i] * admin_fee)
+                            pool.balances[i] =
+                                (|| new_balance.checked_sub(&fees[i].checked_mul(&admin_fee)?))()
+                                    .ok_or(Error::<T>::Math)?;
+
+                            new_balances[i] = new_balances[i]
+                                .checked_sub(&fees[i])
+                                .ok_or(Error::<T>::Math)?;
+                        }
+                        let d2 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
+
+                        // mint_amount = token_supply * (d2 - d0) / d0
+                        mint_amount = (|| {
+                            token_supply
+                                .checked_mul(&d2.checked_sub(&d0)?)?
+                                .checked_div(&d0)
+                        })()
+                        .ok_or(Error::<T>::Math)?;
+                    } else {
+                        pool.balances = new_balances;
+                        mint_amount = d1;
+                    }
+
+                    ensure!(
+                        mint_amount >= min_mint_amount,
+                        Error::<T>::MinAmountNotReached
+                    );
+
+                    let new_token_supply = token_supply
+                        .checked_add(&mint_amount)
+                        .ok_or(Error::<T>::Math)?;
+
+                    //TODO check balances before transfers
+                    for i in 0..n_coins {
+                        if n_amounts[i] > zero {
+                            T::Assets::transfer(pool.assets[i], &who, &who, amounts[i])?;
+                        }
+                    }
+
+                    T::Assets::mint(pool.pool_asset, &who, mint_amount.into())?;
+
+                    let fees = fees
+                        .into_iter()
+                        .map(|x| x.into())
+                        .collect::<Vec<T::Balance>>();
+
+                    Ok((
+                        who.clone(),
+                        pool_id,
+                        amounts,
+                        fees,
+                        d1,
+                        new_token_supply.into(),
+                    ))
+                })?;
+
+            Self::deposit_event(Event::LiquidityAdded(
+                provider,
+                pool_id,
+                token_amounts,
+                fees,
+                invariant,
+                token_supply,
+            ));
 
             Ok(().into())
         }
@@ -461,18 +613,18 @@ pub mod traits {
         /// Creates new asset
         fn create_asset() -> Result<AssetId, DispatchError>;
         /// Mint tokens for the specified asset
-        fn mint(asset: AssetId, dest: AccountId, amount: Balance) -> DispatchResult;
+        fn mint(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult;
         /// Burn tokens for the specified asset
-        fn burn(asset: AssetId, dest: AccountId, amount: Balance) -> DispatchResult;
+        fn burn(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult;
         /// Transfer tokens for the specified asset
         fn transfer(
             asset: AssetId,
-            source: AccountId,
-            dest: AccountId,
+            source: &AccountId,
+            dest: &AccountId,
             amount: Balance,
         ) -> DispatchResult;
         /// Checks the balance for the specified asset
-        fn balance(asset: AssetId, who: AccountId) -> Balance;
+        fn balance(asset: AssetId, who: &AccountId) -> Balance;
         /// Returns total issuance of the specified asset
         fn total_issuance(asset: AssetId) -> Balance;
     }
@@ -502,6 +654,8 @@ pub struct PoolInfo<AssetId, Number> {
     amplification: Number,
     /// Amount of the fee pool charges for the exchange
     fee: Permill,
+    /// Amount of the admin fee pool charges for the exchange
+    admin_fee: Permill,
     /// Current balances excluding admin_fee
     balances: Vec<Number>,
 }
