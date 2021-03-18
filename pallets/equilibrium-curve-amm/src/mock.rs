@@ -1,4 +1,5 @@
 use crate as curve_amm;
+use crate::traits::Const;
 use frame_support::{
     dispatch::{DispatchError, DispatchResult},
     parameter_types,
@@ -6,11 +7,13 @@ use frame_support::{
 };
 use frame_system as system;
 use sp_core::H256;
+use sp_runtime::traits::Saturating;
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup},
     ModuleId,
 };
+use sp_runtime::{FixedI128, FixedPointNumber};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -23,7 +26,7 @@ frame_support::construct_runtime!(
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
         System: frame_system::{Module, Call, Config, Storage, Event<T>},
-        Balances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
+        Balances: pallet_balances::{Module, Call, Storage, Event<T>},
         CurveAmm: curve_amm::{Module, Call, Storage, Event<T>},
     }
 );
@@ -81,6 +84,23 @@ parameter_types! {
 
 pub type Balance = u128;
 type Number = sp_runtime::FixedI128;
+type IntermediateNumber = i128;
+pub struct ConstFixedI128;
+
+impl Const<FixedI128> for ConstFixedI128 {
+    fn zero() -> FixedI128 {
+        FixedI128::zero()
+    }
+
+    fn one() -> FixedI128 {
+        FixedI128::one()
+    }
+
+    fn prec() -> FixedI128 {
+        FixedI128::saturating_from_rational(1, 1_000_000)
+    }
+}
+
 type AssetId = i64;
 
 pub struct EmptyAssets;
@@ -133,6 +153,8 @@ impl curve_amm::Config for Test {
     type ModuleId = CurveAmmModuleId;
 
     type Number = Number;
+    type IntermediateNumber = IntermediateNumber;
+    type Const = ConstFixedI128;
 }
 
 // Build genesis storage according to the mock runtime.

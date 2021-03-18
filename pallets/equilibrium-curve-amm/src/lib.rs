@@ -28,20 +28,26 @@ mod mock;
 mod tests;
 
 use frame_support::codec::{Decode, Encode};
+use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub};
 use sp_runtime::Permill;
+use sp_std::cmp::Ordering;
+use sp_std::convert::TryFrom;
 use sp_std::prelude::*;
+use traits::Const;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::{traits::Assets, PoolInfo};
+    use super::{traits::Assets, traits::Const, PoolInfo};
     use frame_support::{
         dispatch::{DispatchResult, DispatchResultWithPostInfo},
         pallet_prelude::*,
         traits::{Currency, ExistenceRequirement, OnUnbalanced, WithdrawReasons},
     };
     use frame_system::pallet_prelude::*;
+    use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub};
     use sp_runtime::{ModuleId, Permill};
     use sp_std::collections::btree_set::BTreeSet;
+    use sp_std::convert::TryFrom;
     use sp_std::iter::FromIterator;
     use sp_std::prelude::*;
 
@@ -71,7 +77,21 @@ pub mod pallet {
         type ModuleId: Get<ModuleId>;
 
         /// Number type for underlying calculations
-        type Number: Parameter + From<Permill>;
+        type Number: Parameter
+            + From<Permill>
+            + CheckedAdd
+            + CheckedSub
+            + CheckedMul
+            + CheckedDiv
+            + From<Self::IntermediateNumber>
+            + Copy
+            + Eq
+            + Ord;
+        /// Intermediate number type that can be both constructed from usize and converted to
+        /// `Self::Number`
+        type IntermediateNumber: TryFrom<usize>;
+        /// Constants required for math calculations
+        type Const: Const<Self::Number>;
     }
 
     #[pallet::pallet]
@@ -187,6 +207,218 @@ pub mod pallet {
     }
 }
 
+// The main implementation block for the module.
+impl<T: Config> Pallet<T> {
+    /// Find `ann = amp * n^n` where `amp` - amplification coefficient,
+    /// `n` - number of coins.
+    pub(crate) fn get_ann(amp: T::Number, n: usize) -> Option<T::Number> {
+        let n_coins = T::Number::from(T::IntermediateNumber::try_from(n).ok()?);
+        let mut ann = amp;
+        for _ in 0..n {
+            ann = ann.checked_mul(&n_coins)?;
+        }
+        Some(ann)
+    }
+
+    /// Find `d` preserving StableSwap invariant.
+    /// Here `d` - total amount of coins when they have an equal price,
+    /// `xp` - coin amounts, `ann` is amplification coefficient multiplied by `n^n`,
+    /// where `n` is number of coins.
+    ///
+    /// # Notes
+    ///
+    /// Converging solution:
+    ///
+    /// ```latex
+    /// $$d_{j+1} = \frac{a \cdot n^n \cdot \sum x_i - \frac{d_j^{n+1}}{n^n \cdot \prod x_i}}{a \cdot n^n - 1} $$
+    /// ```
+    pub(crate) fn get_d(xp: &[T::Number], ann: T::Number) -> Option<T::Number> {
+        let prec = T::Const::prec();
+        let zero = T::Const::zero();
+        let one = T::Const::one();
+
+        let n_coins = T::Number::from(T::IntermediateNumber::try_from(xp.len()).ok()?);
+
+        let mut s = zero;
+
+        for x in xp.iter() {
+            s = s.checked_add(x)?;
+        }
+        if s == zero {
+            return None;
+        }
+
+        let mut d = s;
+
+        for _ in 0..255 {
+            let mut d_p = d;
+            for x in xp.iter() {
+                // d_p = d_p * d / (x * n_coins)
+                d_p = d_p
+                    .checked_mul(&d)?
+                    .checked_div(&x.checked_mul(&n_coins)?)?;
+            }
+            let d_prev = d;
+            // d = (ann * s + d_p * n_coins) * d / ((ann - 1) * d + (n_coins + 1) * d_p)
+            d = ann
+                .checked_mul(&s)?
+                .checked_add(&d_p.checked_mul(&n_coins)?)?
+                .checked_mul(&d)?
+                .checked_div(
+                    &ann.checked_sub(&one)?
+                        .checked_mul(&d)?
+                        .checked_add(&n_coins.checked_add(&one)?.checked_mul(&d_p)?)?,
+                )?;
+
+            if d.cmp(&d_prev) == Ordering::Greater {
+                if d.checked_sub(&d_prev)?.cmp(&prec) != Ordering::Greater {
+                    return Some(d);
+                }
+            } else {
+                if d_prev.checked_sub(&d)?.cmp(&prec) != Ordering::Greater {
+                    return Some(d);
+                }
+            }
+        }
+        // Convergence typically occurs in 4 rounds or less, this should be unreachable!
+        None
+    }
+
+    /// Find new amount `xp[j]` if one changes some other amount `x[i]` to value `x` preserving StableSwap invariant.
+    /// Here `xp` - coin amounts, `ann` is amplification coefficient multiplied by `n^n`, where
+    /// `n` is number of coins.
+    ///
+    /// # Explanation
+    ///
+    /// Here we give some explanations of how the function works and what its variables are used for.
+    ///
+    /// ```latex
+    /// Suppose we have $n$ coins with amounts $x_1, \ldots, x_n$. Let $S$ be equal to $\sum_{k=1}^{n}
+    /// x_k$ and $P$ equal to $\prod_{k=1}^n x_k$.
+    /// Let's write StableSwap invariant:
+    /// $$a \cdot n^n \cdot S + d = a \cdot n^n \cdot d + \frac{d^{n+1}}{n^n \cdot P}$$
+    /// where $a$ - amplification coefficient, $d$ - total amount of coins when they have an equal
+    /// price.
+    ///
+    /// We know index $i$ of amount that changed to value $x$.  No other parameters have changed and
+    /// StableSwap invariant is preserved. We want to find a new amount with a given index $j$.
+    /// Let's denote this value $x_j$ as $y$. So for $S$ and $P$ we can write following:
+    /// $$S = x_1 + x_2 + \ldots + x_{i-1} + x+x_{i+1} + \ldots + x_{j-1} + y + x_{j+1} + \ldots +
+    /// x_n$$
+    /// $$P = x_1 \cdot x_2 \cdot \ldots \cdot x_{i-1} \cdot x \cdot x_{i+1} \cdot \ldots \cdot x_{j-1}
+    /// \cdot y \cdot x_{j+1} \cdot \ldots \cdot x_n$$
+    ///
+    /// Let sum of all known terms in $S$ be $s$ and product of all known factors in $P$ be $p$. So we
+    /// can rewrite $S$ and $P$:
+    /// $$S = s + y$$
+    /// $$P = p \cdot y$$
+    ///
+    /// Now we can substitute these values into StableSwap invariant:
+    /// $$a \cdot n^n \cdot (s + y) + d = a \cdot n^n \cdot d + \frac{d^{n+1}}{n^n \cdot p \cdot y}$$
+    ///
+    /// It's obvious that $y>0$, $a>0$ and $n>0$. So we can rewrite previous equation as a quadratic
+    /// equation with respect to $y$:
+    /// $$y^2 + \left( s + \frac{d}{a \cdot n^n} - d \right)y = \frac{d^{n+1}}{a \cdot n^{2n} \cdot
+    /// p}$$
+    ///
+    /// Let's introduce variable $ann$ that equals to $a \cdot n^n$. With $ann$ in mind rewrite
+    /// previous equation:
+    /// $$y^2 + \left( s + \frac{d}{ann} - d \right)y = \frac{d^{n+1}}{ann \cdot n^n \cdot p}$$
+    ///
+    /// Let's introduce $b$ and $c$ such that:
+    /// $$b = s + \frac{d}{ann} - d$$
+    /// $$c = \frac{d^{n+1}}{ann \cdot n^n \cdot p} $$
+    ///
+    /// Now we can rewrite our quadratic equation as:
+    /// $$y^2 + by = c$$
+    ///
+    /// To solve this equation numerically using fixed-point iteration method let's rewrite it as:
+    /// $$y = \frac{y^2 + c}{2y + b}$$
+    /// ```
+    pub(crate) fn get_y(
+        i: usize,
+        j: usize,
+        x: T::Number,
+        xp: &[T::Number],
+        ann: T::Number,
+    ) -> Option<T::Number> {
+        let prec = T::Const::prec();
+        let zero = T::Const::zero();
+
+        let two = T::Const::one().checked_add(&T::Const::one())?;
+
+        let n = T::Number::from(T::IntermediateNumber::try_from(xp.len()).ok()?);
+
+        // Same coin
+        if !(i != j) {
+            return None;
+        }
+        // j above n
+        if !(j < xp.len()) {
+            return None;
+        }
+        if !(i < xp.len()) {
+            return None;
+        }
+
+        let d = Self::get_d(xp, ann)?;
+
+        let mut c = d;
+        let mut s = zero;
+
+        // Calculate s and c
+        // p is implicitly calculated as part of c
+        // note that loop makes n - 1 iterations
+        for k in 0..xp.len() {
+            let x_k;
+            if k == i {
+                x_k = x;
+            } else if k != j {
+                x_k = xp[k];
+            } else {
+                continue;
+            }
+            // s = s + x_k
+            s = s.checked_add(&x_k)?;
+            // c = c * d / (x_k * n)
+            c = c.checked_mul(&d)?.checked_div(&x_k.checked_mul(&n)?)?;
+        }
+        // c = c * d / (ann * n)
+        // At this step we have d^n in the numerator of c
+        // and n^(n-1) in its denominator.
+        // So we multiplying it by remaining d/n
+        c = c.checked_mul(&d)?.checked_div(&ann.checked_mul(&n)?)?;
+
+        // b = s + d / ann
+        // We subtract d later
+        let b = s.checked_add(&d.checked_div(&ann)?)?;
+        let mut y = d;
+
+        for _ in 0..255 {
+            let y_prev = y;
+            // y = (y^2 + c) / (2 * y + b - d)
+            // Subtract d to calculate b finally
+            y = y
+                .checked_mul(&y)?
+                .checked_add(&c)?
+                .checked_div(&two.checked_mul(&y)?.checked_add(&b)?.checked_sub(&d)?)?;
+
+            // Equality with the specified precision
+            if y.cmp(&y_prev) == Ordering::Greater {
+                if y.checked_sub(&y_prev)?.cmp(&prec) != Ordering::Greater {
+                    return Some(y);
+                }
+            } else {
+                if y_prev.checked_sub(&y)?.cmp(&prec) != Ordering::Greater {
+                    return Some(y);
+                }
+            }
+        }
+
+        None
+    }
+}
+
 /// Module that contain traits which must be implemented somewhere in the runtime
 /// in order to equilibrium_curve_amm pallet can work properly.
 pub mod traits {
@@ -213,6 +445,16 @@ pub mod traits {
         /// Returns total issuance of the specified asset
         fn total_issuance(asset: AssetId) -> Balance;
     }
+
+    /// Constants required for math calculations
+    pub trait Const<N> {
+        /// Value that represents precision used for fixed-point iteration method for type `N`
+        fn prec() -> N;
+        /// Value that represents 0 for type `N`
+        fn zero() -> N;
+        /// Value that represents 1 for type `N`
+        fn one() -> N;
+    }
 }
 
 /// Storage record type for a pool
@@ -226,383 +468,4 @@ pub struct PoolInfo<AssetId, Number> {
     amplification: Number,
     /// Amount of the fee pool charges for the exchange
     fee: Permill,
-}
-
-use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub};
-use sp_std::cmp::Ordering;
-use sp_std::convert::TryFrom;
-
-/// Constants required for math calculations
-pub trait Const<N> {
-    /// Value that represents precision used for fixed-point iteration method for type `N`
-    fn prec() -> N;
-    /// Value that represents 0 for type `N`
-    fn zero() -> N;
-    /// Value that represents 1 for type `N`
-    fn one() -> N;
-}
-
-/// Find `ann = amp * n^n` where `amp` - amplification coefficient,
-/// `n` - number of coins.
-fn get_ann<N, P>(amp: N, n: usize) -> Option<N>
-where
-    N: CheckedMul + From<P>,
-    P: TryFrom<usize>,
-{
-    let n_coins = N::from(P::try_from(n).ok()?);
-    let mut ann = amp;
-    for _ in 0..n {
-        ann = ann.checked_mul(&n_coins)?;
-    }
-    Some(ann)
-}
-
-/// Find `d` preserving StableSwap invariant.
-/// Here `d` - total amount of coins when they have an equal price,
-/// `xp` - coin amounts, `ann` is amplification coefficient multiplied by `n^n`,
-/// where `n` is number of coins.
-///
-/// # Notes
-///
-/// Converging solution:
-///
-/// ```latex
-/// $$d_{j+1} = \frac{a \cdot n^n \cdot \sum x_i - \frac{d_j^{n+1}}{n^n \cdot \prod x_i}}{a \cdot n^n - 1} $$
-/// ```
-pub fn get_d<N, P, C>(xp: &[N], ann: N) -> Option<N>
-where
-    N: CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + From<P> + Copy + Eq + Ord,
-    P: TryFrom<usize>,
-    C: Const<N>,
-{
-    let prec = C::prec();
-    let zero = C::zero();
-    let one = C::one();
-
-    let n_coins = N::from(P::try_from(xp.len()).ok()?);
-
-    let mut s = zero;
-
-    for x in xp.iter() {
-        s = s.checked_add(x)?;
-    }
-    if s == zero {
-        return None;
-    }
-
-    let mut d = s;
-
-    for _ in 0..255 {
-        let mut d_p = d;
-        for x in xp.iter() {
-            // d_p = d_p * d / (x * n_coins)
-            d_p = d_p
-                .checked_mul(&d)?
-                .checked_div(&x.checked_mul(&n_coins)?)?;
-        }
-        let d_prev = d;
-        // d = (ann * s + d_p * n_coins) * d / ((ann - 1) * d + (n_coins + 1) * d_p)
-        d = ann
-            .checked_mul(&s)?
-            .checked_add(&d_p.checked_mul(&n_coins)?)?
-            .checked_mul(&d)?
-            .checked_div(
-                &ann.checked_sub(&one)?
-                    .checked_mul(&d)?
-                    .checked_add(&n_coins.checked_add(&one)?.checked_mul(&d_p)?)?,
-            )?;
-
-        if d.cmp(&d_prev) == Ordering::Greater {
-            if d.checked_sub(&d_prev)?.cmp(&prec) != Ordering::Greater {
-                return Some(d);
-            }
-        } else {
-            if d_prev.checked_sub(&d)?.cmp(&prec) != Ordering::Greater {
-                return Some(d);
-            }
-        }
-    }
-    // Convergence typically occurs in 4 rounds or less, this should be unreachable!
-    None
-}
-
-/// Find new amount `xp[j]` if one changes some other amount `x[i]` to value `x` preserving StableSwap invariant.
-/// Here `xp` - coin amounts, `ann` is amplification coefficient multiplied by `n^n`, where
-/// `n` is number of coins.
-///
-/// # Explanation
-///
-/// Here we give some explanations of how the function works and what its variables are used for.
-///
-/// ```latex
-/// Suppose we have $n$ coins with amounts $x_1, \ldots, x_n$. Let $S$ be equal to $\sum_{k=1}^{n}
-/// x_k$ and $P$ equal to $\prod_{k=1}^n x_k$.
-/// Let's write StableSwap invariant:
-/// $$a \cdot n^n \cdot S + d = a \cdot n^n \cdot d + \frac{d^{n+1}}{n^n \cdot P}$$
-/// where $a$ - amplification coefficient, $d$ - total amount of coins when they have an equal
-/// price.
-///
-/// We know index $i$ of amount that changed to value $x$.  No other parameters have changed and
-/// StableSwap invariant is preserved. We want to find a new amount with a given index $j$.
-/// Let's denote this value $x_j$ as $y$. So for $S$ and $P$ we can write following:
-/// $$S = x_1 + x_2 + \ldots + x_{i-1} + x+x_{i+1} + \ldots + x_{j-1} + y + x_{j+1} + \ldots +
-/// x_n$$
-/// $$P = x_1 \cdot x_2 \cdot \ldots \cdot x_{i-1} \cdot x \cdot x_{i+1} \cdot \ldots \cdot x_{j-1}
-/// \cdot y \cdot x_{j+1} \cdot \ldots \cdot x_n$$
-///
-/// Let sum of all known terms in $S$ be $s$ and product of all known factors in $P$ be $p$. So we
-/// can rewrite $S$ and $P$:
-/// $$S = s + y$$
-/// $$P = p \cdot y$$
-///
-/// Now we can substitute these values into StableSwap invariant:
-/// $$a \cdot n^n \cdot (s + y) + d = a \cdot n^n \cdot d + \frac{d^{n+1}}{n^n \cdot p \cdot y}$$
-///
-/// It's obvious that $y>0$, $a>0$ and $n>0$. So we can rewrite previous equation as a quadratic
-/// equation with respect to $y$:
-/// $$y^2 + \left( s + \frac{d}{a \cdot n^n} - d \right)y = \frac{d^{n+1}}{a \cdot n^{2n} \cdot
-/// p}$$
-///
-/// Let's introduce variable $ann$ that equals to $a \cdot n^n$. With $ann$ in mind rewrite
-/// previous equation:
-/// $$y^2 + \left( s + \frac{d}{ann} - d \right)y = \frac{d^{n+1}}{ann \cdot n^n \cdot p}$$
-///
-/// Let's introduce $b$ and $c$ such that:
-/// $$b = s + \frac{d}{ann} - d$$
-/// $$c = \frac{d^{n+1}}{ann \cdot n^n \cdot p} $$
-///
-/// Now we can rewrite our quadratic equation as:
-/// $$y^2 + by = c$$
-///
-/// To solve this equation numerically using fixed-point iteration method let's rewrite it as:
-/// $$y = \frac{y^2 + c}{2y + b}$$
-/// ```
-pub fn get_y<N, P, C>(i: usize, j: usize, x: N, xp: &[N], ann: N) -> Option<N>
-where
-    N: CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + From<P> + Copy + Eq + Ord,
-    P: TryFrom<usize>,
-    C: Const<N>,
-{
-    let prec = C::prec();
-    let zero = C::zero();
-
-    let two = C::one().checked_add(&C::one())?;
-
-    let n = N::from(P::try_from(xp.len()).ok()?);
-
-    // Same coin
-    if !(i != j) {
-        return None;
-    }
-    // j above n
-    if !(j < xp.len()) {
-        return None;
-    }
-    if !(i < xp.len()) {
-        return None;
-    }
-
-    let d = get_d::<N, P, C>(xp, ann)?;
-
-    let mut c = d;
-    let mut s = zero;
-
-    // Calculate s and c
-    // p is implicitly calculated as part of c
-    // note that loop makes n - 1 iterations
-    for k in 0..xp.len() {
-        let x_k;
-        if k == i {
-            x_k = x;
-        } else if k != j {
-            x_k = xp[k];
-        } else {
-            continue;
-        }
-        // s = s + x_k
-        s = s.checked_add(&x_k)?;
-        // c = c * d / (x_k * n)
-        c = c.checked_mul(&d)?.checked_div(&x_k.checked_mul(&n)?)?;
-    }
-    // c = c * d / (ann * n)
-    // At this step we have d^n in the numerator of c
-    // and n^(n-1) in its denominator.
-    // So we multiplying it by remaining d/n
-    c = c.checked_mul(&d)?.checked_div(&ann.checked_mul(&n)?)?;
-
-    // b = s + d / ann
-    // We subtract d later
-    let b = s.checked_add(&d.checked_div(&ann)?)?;
-    let mut y = d;
-
-    for _ in 0..255 {
-        let y_prev = y;
-        // y = (y^2 + c) / (2 * y + b - d)
-        // Subtract d to calculate b finally
-        y = y
-            .checked_mul(&y)?
-            .checked_add(&c)?
-            .checked_div(&two.checked_mul(&y)?.checked_add(&b)?.checked_sub(&d)?)?;
-
-        // Equality with the specified precision
-        if y.cmp(&y_prev) == Ordering::Greater {
-            if y.checked_sub(&y_prev)?.cmp(&prec) != Ordering::Greater {
-                return Some(y);
-            }
-        } else {
-            if y_prev.checked_sub(&y)?.cmp(&prec) != Ordering::Greater {
-                return Some(y);
-            }
-        }
-    }
-
-    None
-}
-
-#[cfg(test)]
-mod math_tests {
-    use super::*;
-    use sp_runtime::traits::Saturating;
-    use sp_runtime::{FixedI128, FixedPointNumber};
-
-    struct ConstFixedI128;
-
-    impl Const<FixedI128> for ConstFixedI128 {
-        fn zero() -> FixedI128 {
-            FixedI128::zero()
-        }
-
-        fn one() -> FixedI128 {
-            FixedI128::one()
-        }
-
-        fn prec() -> FixedI128 {
-            FixedI128::saturating_from_rational(1, 1_000_000)
-        }
-    }
-
-    #[test]
-    fn get_d_successful() {
-        let xp = vec![
-            FixedI128::saturating_from_rational(11, 10),
-            FixedI128::saturating_from_rational(88, 100),
-        ];
-        let amp = FixedI128::saturating_from_rational(292, 100);
-        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
-
-        let result = get_d::<FixedI128, i128, ConstFixedI128>(&xp, ann);
-
-        // expected d is 1.9781953712751776
-        // expected precision is 1e-13
-        let delta = result
-            .map(|x| {
-                x.saturating_sub(FixedI128::saturating_from_rational(
-                    19781953712751776i128,
-                    10_000_000_000_000_000i128,
-                ))
-                .saturating_abs()
-            })
-            .map(|x| {
-                x.cmp(&FixedI128::saturating_from_rational(
-                    1i128,
-                    10_000_000_000_000i128,
-                ))
-            });
-        assert_eq!(delta, Some(Ordering::Less));
-    }
-
-    #[test]
-    fn get_d_empty() {
-        let xp = vec![];
-        let amp = FixedI128::saturating_from_rational(292, 100);
-        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
-
-        let result = get_d::<FixedI128, i128, ConstFixedI128>(&xp, ann);
-
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn get_y_successful() {
-        let i = 0;
-        let j = 1;
-        let x = FixedI128::saturating_from_rational(111, 100);
-        let xp = vec![
-            FixedI128::saturating_from_rational(11, 10),
-            FixedI128::saturating_from_rational(88, 100),
-        ];
-        let amp = FixedI128::saturating_from_rational(292, 100);
-        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
-
-        let result = get_y::<FixedI128, i128, ConstFixedI128>(i, j, x, &xp, ann);
-
-        // expected y is 0.8703405416689252
-        // expected precision is 1e-13
-        let delta = result
-            .map(|x| {
-                x.saturating_sub(FixedI128::saturating_from_rational(
-                    8703405416689252i128,
-                    10_000_000_000_000_000i128,
-                ))
-                .saturating_abs()
-            })
-            .map(|x| {
-                x.cmp(&FixedI128::saturating_from_rational(
-                    1,
-                    10_000_000_000_000i128,
-                ))
-            });
-        assert_eq!(delta, Some(Ordering::Less));
-    }
-
-    #[test]
-    fn get_d_same_coin() {
-        let i = 1;
-        let j = 1;
-        let x = FixedI128::saturating_from_rational(111, 100);
-        let xp = vec![
-            FixedI128::saturating_from_rational(11, 10),
-            FixedI128::saturating_from_rational(88, 100),
-        ];
-        let amp = FixedI128::saturating_from_rational(292, 100);
-        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
-
-        let result = get_y::<FixedI128, i128, ConstFixedI128>(i, j, x, &xp, ann);
-
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn get_d_i_greater_than_n() {
-        let i = 33;
-        let j = 1;
-        let x = FixedI128::saturating_from_rational(111, 100);
-        let xp = vec![
-            FixedI128::saturating_from_rational(11, 10),
-            FixedI128::saturating_from_rational(88, 100),
-        ];
-        let amp = FixedI128::saturating_from_rational(292, 100);
-        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
-
-        let result = get_y::<FixedI128, i128, ConstFixedI128>(i, j, x, &xp, ann);
-
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn get_d_j_greater_than_n() {
-        let i = 1;
-        let j = 33;
-        let x = FixedI128::saturating_from_rational(111, 100);
-        let xp = vec![
-            FixedI128::saturating_from_rational(11, 10),
-            FixedI128::saturating_from_rational(88, 100),
-        ];
-        let amp = FixedI128::saturating_from_rational(292, 100);
-        let ann = get_ann::<FixedI128, i128>(amp, xp.len()).unwrap();
-
-        let result = get_y::<FixedI128, i128, ConstFixedI128>(i, j, x, &xp, ann);
-
-        assert_eq!(result, None);
-    }
 }

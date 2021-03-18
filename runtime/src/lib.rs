@@ -23,6 +23,8 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
+use sp_runtime::traits::Saturating;
+use sp_runtime::{FixedI128, FixedPointNumber};
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -291,7 +293,23 @@ parameter_types! {
     pub const CurveAmmModuleId: ModuleId = ModuleId(*b"eq/crvam");
 }
 
-type Number = sp_runtime::FixedI128;
+type Number = FixedI128;
+type IntermediateNumber = i128;
+pub struct ConstFixedI128;
+
+impl equilibrium_curve_amm::traits::Const<FixedI128> for ConstFixedI128 {
+    fn zero() -> FixedI128 {
+        FixedI128::zero()
+    }
+
+    fn one() -> FixedI128 {
+        FixedI128::one()
+    }
+
+    fn prec() -> FixedI128 {
+        FixedI128::saturating_from_rational(1, 1_000_000)
+    }
+}
 
 pub struct EmptyUnbalanceHandler;
 
@@ -312,6 +330,8 @@ impl equilibrium_curve_amm::Config for Runtime {
     type ModuleId = CurveAmmModuleId;
 
     type Number = Number;
+    type IntermediateNumber = IntermediateNumber;
+    type Const = ConstFixedI128;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

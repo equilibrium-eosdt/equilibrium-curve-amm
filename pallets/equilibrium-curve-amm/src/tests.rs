@@ -2,8 +2,10 @@ use crate::{mock::*, Error, PoolInfo};
 use core::convert::From;
 use frame_support::assert_err_ignore_postinfo;
 use frame_support::{assert_noop, assert_ok, traits::Currency};
-use sp_runtime::FixedI128;
+use sp_runtime::traits::Saturating;
 use sp_runtime::Permill;
+use sp_runtime::{FixedI128, FixedPointNumber};
+use sp_std::cmp::Ordering;
 
 #[test]
 fn create_pool_successful() {
@@ -118,4 +120,129 @@ fn create_pool_on_unbalanced_called() {
         let balance_after_fee = Balances::free_balance(&1);
         assert_eq!(initial_balance - balance_after_fee, 999);
     });
+}
+
+#[test]
+fn get_d_successful() {
+    let xp = vec![
+        FixedI128::saturating_from_rational(11, 10),
+        FixedI128::saturating_from_rational(88, 100),
+    ];
+    let amp = FixedI128::saturating_from_rational(292, 100);
+    let ann = CurveAmm::get_ann(amp, xp.len()).unwrap();
+
+    let result = CurveAmm::get_d(&xp, ann);
+
+    // expected d is 1.9781953712751776
+    // expected precision is 1e-13
+    let delta = result
+        .map(|x| {
+            x.saturating_sub(FixedI128::saturating_from_rational(
+                19781953712751776i128,
+                10_000_000_000_000_000i128,
+            ))
+            .saturating_abs()
+        })
+        .map(|x| {
+            x.cmp(&FixedI128::saturating_from_rational(
+                1i128,
+                10_000_000_000_000i128,
+            ))
+        });
+    assert_eq!(delta, Some(Ordering::Less));
+}
+
+#[test]
+fn get_d_empty() {
+    let xp = vec![];
+    let amp = FixedI128::saturating_from_rational(292, 100);
+    let ann = CurveAmm::get_ann(amp, xp.len()).unwrap();
+
+    let result = CurveAmm::get_d(&xp, ann);
+
+    assert_eq!(result, None);
+}
+
+#[test]
+fn get_y_successful() {
+    let i = 0;
+    let j = 1;
+    let x = FixedI128::saturating_from_rational(111, 100);
+    let xp = vec![
+        FixedI128::saturating_from_rational(11, 10),
+        FixedI128::saturating_from_rational(88, 100),
+    ];
+    let amp = FixedI128::saturating_from_rational(292, 100);
+    let ann = CurveAmm::get_ann(amp, xp.len()).unwrap();
+
+    let result = CurveAmm::get_y(i, j, x, &xp, ann);
+
+    // expected y is 0.8703405416689252
+    // expected precision is 1e-13
+    let delta = result
+        .map(|x| {
+            x.saturating_sub(FixedI128::saturating_from_rational(
+                8703405416689252i128,
+                10_000_000_000_000_000i128,
+            ))
+            .saturating_abs()
+        })
+        .map(|x| {
+            x.cmp(&FixedI128::saturating_from_rational(
+                1,
+                10_000_000_000_000i128,
+            ))
+        });
+    assert_eq!(delta, Some(Ordering::Less));
+}
+
+#[test]
+fn get_y_same_coin() {
+    let i = 1;
+    let j = 1;
+    let x = FixedI128::saturating_from_rational(111, 100);
+    let xp = vec![
+        FixedI128::saturating_from_rational(11, 10),
+        FixedI128::saturating_from_rational(88, 100),
+    ];
+    let amp = FixedI128::saturating_from_rational(292, 100);
+    let ann = CurveAmm::get_ann(amp, xp.len()).unwrap();
+
+    let result = CurveAmm::get_y(i, j, x, &xp, ann);
+
+    assert_eq!(result, None);
+}
+
+#[test]
+fn get_y_i_greater_than_n() {
+    let i = 33;
+    let j = 1;
+    let x = FixedI128::saturating_from_rational(111, 100);
+    let xp = vec![
+        FixedI128::saturating_from_rational(11, 10),
+        FixedI128::saturating_from_rational(88, 100),
+    ];
+    let amp = FixedI128::saturating_from_rational(292, 100);
+    let ann = CurveAmm::get_ann(amp, xp.len()).unwrap();
+
+    let result = CurveAmm::get_y(i, j, x, &xp, ann);
+
+    assert_eq!(result, None);
+}
+
+#[test]
+fn get_y_j_greater_than_n() {
+    let i = 1;
+    let j = 33;
+    let x = FixedI128::saturating_from_rational(111, 100);
+    let xp = vec![
+        FixedI128::saturating_from_rational(11, 10),
+        FixedI128::saturating_from_rational(88, 100),
+    ];
+    let amp = FixedI128::saturating_from_rational(292, 100);
+    let ann = CurveAmm::get_ann(amp, xp.len()).unwrap();
+
+    let result = CurveAmm::get_y(i, j, x, &xp, ann);
+
+    assert_eq!(result, None);
 }
