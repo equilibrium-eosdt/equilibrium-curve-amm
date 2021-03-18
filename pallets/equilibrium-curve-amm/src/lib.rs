@@ -78,6 +78,7 @@ pub mod pallet {
 
         /// Number type for underlying calculations
         type Number: Parameter
+            + Default
             + From<Permill>
             + From<Self::Balance>
             + CheckedAdd
@@ -188,11 +189,14 @@ pub mod pallet {
                         let asset =
                             T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
 
+                        let balances = vec![T::Number::default(); assets.len()];
+
                         *maybe_pool_info = Some(PoolInfo {
                             pool_asset: asset,
                             assets: assets,
                             amplification,
                             fee,
+                            balances,
                         });
 
                         Ok(())
@@ -226,6 +230,8 @@ pub mod pallet {
 
             let ann =
                 Self::get_ann(pool.amplification, pool.assets.len()).ok_or(Error::<T>::Math)?;
+
+            let old_balances = pool.balances.clone();
 
             Ok(().into())
         }
@@ -496,5 +502,6 @@ pub struct PoolInfo<AssetId, Number> {
     amplification: Number,
     /// Amount of the fee pool charges for the exchange
     fee: Permill,
-    //balances: Vec<
+    /// Current balances excluding admin_fee
+    balances: Vec<Number>,
 }

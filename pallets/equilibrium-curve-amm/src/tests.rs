@@ -84,7 +84,8 @@ fn create_pool_pool_saved_to_storage() {
                 pool_asset: 0,
                 assets: vec![0, 1],
                 amplification: FixedU128::from(1u128),
-                fee: Permill::one()
+                fee: Permill::one(),
+                balances: vec![FixedU128::from(0u128), FixedU128::from(0u128),]
             })
         );
     });
