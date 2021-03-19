@@ -15,7 +15,8 @@ fn create_pool_successful() {
             Origin::signed(1),
             vec![0, 1],
             FixedU128::from(1u128),
-            Permill::one()
+            Permill::one(),
+            Permill::one(),
         ));
     });
 }
@@ -30,7 +31,8 @@ fn create_pool_assets_must_be_nonempty() {
                 Origin::signed(1),
                 vec![],
                 FixedU128::from(1u128),
-                Permill::one()
+                Permill::one(),
+                Permill::one(),
             ),
             Error::<Test>::NotEnoughAssets
         );
@@ -45,9 +47,10 @@ fn create_pool_balance_must_be_more_than_fee() {
                 Origin::signed(1),
                 vec![0, 1],
                 FixedU128::from(1u128),
-                Permill::one()
+                Permill::one(),
+                Permill::one(),
             ),
-            Error::<Test>::NotEnoughForFee
+            Error::<Test>::InsufficientFunds
         );
     });
 }
@@ -61,7 +64,8 @@ fn create_pool_correct_pool_count() {
             Origin::signed(1),
             vec![0, 1],
             FixedU128::from(1u128),
-            Permill::one()
+            Permill::one(),
+            Permill::one(),
         ));
         assert_eq!(CurveAmm::pool_count(), 1);
     });
@@ -76,7 +80,8 @@ fn create_pool_pool_saved_to_storage() {
             Origin::signed(1),
             vec![0, 1],
             FixedU128::from(1u128),
-            Permill::one()
+            Permill::one(),
+            Permill::one(),
         ));
         assert_eq!(
             CurveAmm::pools(0),
@@ -85,6 +90,7 @@ fn create_pool_pool_saved_to_storage() {
                 assets: vec![0, 1],
                 amplification: FixedU128::from(1u128),
                 fee: Permill::one(),
+                admin_fee: Permill::one(),
                 balances: vec![FixedU128::from(0u128), FixedU128::from(0u128),]
             })
         );
@@ -100,7 +106,8 @@ fn create_pool_fee_withdrawn() {
             Origin::signed(1),
             vec![0, 1],
             FixedU128::from(1u128),
-            Permill::one()
+            Permill::one(),
+            Permill::one(),
         ));
         let balance_after_fee = Balances::free_balance(&1);
         assert_eq!(initial_balance - balance_after_fee, 999);
@@ -116,7 +123,8 @@ fn create_pool_on_unbalanced_called() {
             Origin::signed(1),
             vec![0, 1],
             FixedU128::from(1u128),
-            Permill::one()
+            Permill::one(),
+            Permill::one(),
         ));
         let balance_after_fee = Balances::free_balance(&1);
         assert_eq!(initial_balance - balance_after_fee, 999);

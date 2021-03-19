@@ -11,7 +11,7 @@ use pallet_grandpa::{AuthorityId as GrandpaId, AuthorityList as GrandpaAuthority
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
-use sp_runtime::traits::Saturating;
+use sp_runtime::traits::{Saturating, Convert};
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, NumberFor, Verify,
 };
@@ -22,6 +22,7 @@ use sp_runtime::{
 };
 use sp_runtime::{FixedPointNumber, FixedU128};
 use sp_std::prelude::*;
+use sp_std::convert::TryFrom;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
@@ -291,31 +292,48 @@ impl equilibrium_assets::Config for Runtime {
 parameter_types! {
     pub const CreationFee: Balance = 999;
     pub const CurveAmmModuleId: ModuleId = ModuleId(*b"eq/crvam");
+    pub Precision: FixedU128 = FixedU128::saturating_from_rational(1, 1_000_000);
 }
 
 type Number = FixedU128;
-type IntermediateNumber = u128;
-pub struct ConstFixedU128;
-
-impl equilibrium_curve_amm::traits::Const<FixedU128> for ConstFixedU128 {
-    fn zero() -> FixedU128 {
-        FixedU128::zero()
-    }
-
-    fn one() -> FixedU128 {
-        FixedU128::one()
-    }
-
-    fn prec() -> FixedU128 {
-        FixedU128::saturating_from_rational(1, 1_000_000)
-    }
-}
 
 pub struct EmptyUnbalanceHandler;
 
 impl OnUnbalanced<<pallet_balances::Pallet<Runtime> as Currency<AccountId>>::NegativeImbalance>
     for EmptyUnbalanceHandler
 {
+}
+
+pub struct FixedU128Convert;
+
+impl Convert<Permill, FixedU128> for FixedU128Convert {
+    fn convert(a: Permill) -> FixedU128 {
+        a.into()
+    }
+}
+
+impl Convert<Balance, FixedU128> for FixedU128Convert {
+    fn convert(a: Balance) -> FixedU128 {
+        FixedU128::saturating_from_integer(a)
+    }
+}
+
+impl Convert<u8, FixedU128> for FixedU128Convert {
+    fn convert(a: u8) -> FixedU128 {
+        FixedU128::saturating_from_integer(a)
+    }
+}
+
+impl equilibrium_curve_amm::traits::CheckedConvert<usize, FixedU128> for FixedU128Convert {
+    fn convert(a: usize) -> Option<FixedU128> {
+        Some(FixedU128::saturating_from_integer(u128::try_from(a).ok()?))
+    }
+}
+
+impl Convert<FixedU128, Balance> for FixedU128Convert {
+    fn convert(a: FixedU128) -> Balance {
+        a.into_inner() / FixedU128::accuracy()
+    }
 }
 
 /// Configure the pallet equilibrium_curve_amm in pallets/equilibrium_curve_amm.
@@ -330,8 +348,8 @@ impl equilibrium_curve_amm::Config for Runtime {
     type ModuleId = CurveAmmModuleId;
 
     type Number = Number;
-    type IntermediateNumber = IntermediateNumber;
-    type Const = ConstFixedU128;
+    type Precision = Precision;
+    type Convert = FixedU128Convert;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

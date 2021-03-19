@@ -28,23 +28,26 @@ mod mock;
 mod tests;
 
 use frame_support::codec::{Decode, Encode};
-use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub};
+use frame_support::traits::Get;
+use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert};
 use sp_runtime::Permill;
 use sp_std::cmp::Ordering;
 use sp_std::convert::TryFrom;
 use sp_std::prelude::*;
-use traits::Const;
+use traits::CheckedConvert;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::{traits::Assets, traits::Const, PoolId, PoolInfo};
+    use super::{traits::Assets, traits::CheckedConvert, PoolId, PoolInfo};
     use frame_support::{
         dispatch::{Codec, DispatchResult, DispatchResultWithPostInfo},
         pallet_prelude::*,
         traits::{Currency, ExistenceRequirement, OnUnbalanced, WithdrawReasons},
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub};
+    use sp_runtime::traits::{
+        AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert,
+    };
     use sp_runtime::{ModuleId, Permill};
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::convert::TryFrom;
@@ -60,7 +63,7 @@ pub mod pallet {
         /// Identificator type of Asset
         type AssetId: Parameter + Ord + Copy;
         /// The balance of an account
-        type Balance: Parameter + Codec + Copy;
+        type Balance: Parameter + Codec + Copy + Ord;
         /// External implementation for required opeartions with assets
         type Assets: super::traits::Assets<Self::AssetId, Self::Balance, Self::AccountId>;
         /// Standart balances pallet for utility token or adapter
@@ -77,24 +80,15 @@ pub mod pallet {
         type ModuleId: Get<ModuleId>;
 
         /// Number type for underlying calculations
-        type Number: Parameter
-            + Default
-            + From<Permill>
-            + From<Self::Balance>
-            + Into<Self::Balance>
-            + CheckedAdd
-            + CheckedSub
-            + CheckedMul
-            + CheckedDiv
-            + From<Self::IntermediateNumber>
-            + Copy
-            + Eq
-            + Ord;
-        /// Intermediate number type that can be both constructed from usize and converted to
-        /// `Self::Number`
-        type IntermediateNumber: TryFrom<usize>;
-        /// Constants required for math calculations
-        type Const: Const<Self::Number>;
+        type Number: Parameter + CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + Copy + Eq + Ord;
+        /// Value that represents precision used for fixed-point iteration method
+        type Precision: Get<Self::Number>;
+        /// Convertions between `Self::Number` and various representations
+        type Convert: Convert<Permill, Self::Number>
+            + Convert<Self::Balance, Self::Number>
+            + Convert<u8, Self::Number>
+            + CheckedConvert<usize, Self::Number>
+            + Convert<Self::Number, Self::Balance>;
     }
 
     #[pallet::pallet]
@@ -134,8 +128,6 @@ pub mod pallet {
     pub enum Error<T> {
         /// Could not create new asset
         AssetNotCreated,
-        /// User does not have required amount of currency to complete operation
-        NotEnoughForFee,
         /// Values in the storage are inconsistent
         InconsistentStorage,
         /// Not enough assets provided
@@ -150,6 +142,8 @@ pub mod pallet {
         WrongAssetAmount,
         /// Minimum specified amount is not reached
         MinAmountNotReached,
+        /// Available amount is not enough to complete operation
+        InsufficientFunds,
     }
 
     #[pallet::hooks]
@@ -184,7 +178,7 @@ pub mod pallet {
                 WithdrawReasons::FEE,
                 ExistenceRequirement::AllowDeath,
             )
-            .map_err(|_| Error::<T>::NotEnoughForFee)?;
+            .map_err(|_| Error::<T>::InsufficientFunds)?;
             T::OnUnbalanced::on_unbalanced(imbalance);
 
             // Add new pool
@@ -203,7 +197,7 @@ pub mod pallet {
                         let asset =
                             T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
 
-                        let balances = vec![T::Number::default(); assets.len()];
+                        let balances = vec![Self::get_number(0); assets.len()];
 
                         *maybe_pool_info = Some(PoolInfo {
                             pool_asset: asset,
@@ -241,7 +235,7 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            let zero = T::Const::zero();
+            let zero = Self::get_number(0);
 
             let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
                 Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
@@ -260,12 +254,14 @@ pub mod pallet {
 
                     let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
 
-                    let token_supply = T::Number::from(T::Assets::total_issuance(pool.pool_asset));
+                    let token_supply = <T::Convert as Convert<T::Balance, T::Number>>::convert(
+                        T::Assets::total_issuance(pool.pool_asset),
+                    );
                     let mut new_balances = old_balances.clone();
                     let n_amounts = amounts
                         .iter()
                         .copied()
-                        .map(T::Number::from)
+                        .map(<T::Convert as Convert<T::Balance, T::Number>>::convert)
                         .collect::<Vec<_>>();
                     for i in 0..n_coins {
                         if token_supply == zero {
@@ -290,19 +286,20 @@ pub mod pallet {
                         // fee = pool.fee * n_coins / (4 * (n_coins - 1))
                         let fee = (|| {
                             let n_coins =
-                                T::Number::from(T::IntermediateNumber::try_from(n_coins).ok()?);
-                            let one = T::Const::one();
+                                <T::Convert as CheckedConvert<usize, T::Number>>::convert(n_coins)?;
+                            let one = Self::get_number(1);
                             let four = one
                                 .checked_add(&one)?
                                 .checked_add(&one)?
                                 .checked_add(&one)?;
 
-                            T::Number::from(pool.fee)
+                            <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee)
                                 .checked_mul(&n_coins)?
                                 .checked_div(&four.checked_mul(&n_coins.checked_sub(&one)?)?)
                         })()
                         .ok_or(Error::<T>::Math)?;
-                        let admin_fee = T::Number::from(pool.admin_fee);
+                        let admin_fee =
+                            <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
                         for i in 0..n_coins {
                             // ideal_balance = d1 * old_balances[i] / d0
                             let ideal_balance =
@@ -352,18 +349,33 @@ pub mod pallet {
                         .checked_add(&mint_amount)
                         .ok_or(Error::<T>::Math)?;
 
-                    //TODO check balances before transfers
+                    // Ensure that for all tokens user has sufficient amount
+                    for i in 0..n_coins {
+                        ensure!(
+                            T::Assets::balance(pool.assets[i], &who) >= amounts[i],
+                            Error::<T>::InsufficientFunds
+                        );
+                    }
                     for i in 0..n_coins {
                         if n_amounts[i] > zero {
-                            T::Assets::transfer(pool.assets[i], &who, &who, amounts[i])?;
+                            T::Assets::transfer(
+                                pool.assets[i],
+                                &who,
+                                &T::ModuleId::get().into_account(),
+                                amounts[i],
+                            )?;
                         }
                     }
 
-                    T::Assets::mint(pool.pool_asset, &who, mint_amount.into())?;
+                    T::Assets::mint(
+                        pool.pool_asset,
+                        &who,
+                        <T::Convert as Convert<T::Number, T::Balance>>::convert(mint_amount),
+                    )?;
 
                     let fees = fees
                         .into_iter()
-                        .map(|x| x.into())
+                        .map(|x| <T::Convert as Convert<T::Number, T::Balance>>::convert(x))
                         .collect::<Vec<T::Balance>>();
 
                     Ok((
@@ -372,7 +384,7 @@ pub mod pallet {
                         amounts,
                         fees,
                         d1,
-                        new_token_supply.into(),
+                        <T::Convert as Convert<T::Number, T::Balance>>::convert(new_token_supply),
                     ))
                 })?;
 
@@ -392,10 +404,14 @@ pub mod pallet {
 
 // The main implementation block for the module.
 impl<T: Config> Pallet<T> {
+    pub(crate) fn get_number(n: u8) -> T::Number {
+        <T::Convert as Convert<u8, T::Number>>::convert(n)
+    }
+
     /// Find `ann = amp * n^n` where `amp` - amplification coefficient,
     /// `n` - number of coins.
     pub(crate) fn get_ann(amp: T::Number, n: usize) -> Option<T::Number> {
-        let n_coins = T::Number::from(T::IntermediateNumber::try_from(n).ok()?);
+        let n_coins = <T::Convert as CheckedConvert<usize, T::Number>>::convert(n)?;
         let mut ann = amp;
         for _ in 0..n {
             ann = ann.checked_mul(&n_coins)?;
@@ -416,11 +432,11 @@ impl<T: Config> Pallet<T> {
     /// $$d_{j+1} = \frac{a \cdot n^n \cdot \sum x_i - \frac{d_j^{n+1}}{n^n \cdot \prod x_i}}{a \cdot n^n - 1} $$
     /// ```
     pub(crate) fn get_d(xp: &[T::Number], ann: T::Number) -> Option<T::Number> {
-        let prec = T::Const::prec();
-        let zero = T::Const::zero();
-        let one = T::Const::one();
+        let prec = T::Precision::get();
+        let zero = Self::get_number(0);
+        let one = Self::get_number(1);
 
-        let n_coins = T::Number::from(T::IntermediateNumber::try_from(xp.len()).ok()?);
+        let n_coins = <T::Convert as CheckedConvert<usize, T::Number>>::convert(xp.len())?;
 
         let mut s = zero;
 
@@ -453,12 +469,12 @@ impl<T: Config> Pallet<T> {
                         .checked_add(&n_coins.checked_add(&one)?.checked_mul(&d_p)?)?,
                 )?;
 
-            if d.cmp(&d_prev) == Ordering::Greater {
-                if d.checked_sub(&d_prev)?.cmp(&prec) != Ordering::Greater {
+            if d > d_prev {
+                if d.checked_sub(&d_prev)? <= prec {
                     return Some(d);
                 }
             } else {
-                if d_prev.checked_sub(&d)?.cmp(&prec) != Ordering::Greater {
+                if d_prev.checked_sub(&d)? <= prec {
                     return Some(d);
                 }
             }
@@ -525,12 +541,12 @@ impl<T: Config> Pallet<T> {
         xp: &[T::Number],
         ann: T::Number,
     ) -> Option<T::Number> {
-        let prec = T::Const::prec();
-        let zero = T::Const::zero();
+        let prec = T::Precision::get();
+        let zero = Self::get_number(0);
 
-        let two = T::Const::one().checked_add(&T::Const::one())?;
+        let two = Self::get_number(2);
 
-        let n = T::Number::from(T::IntermediateNumber::try_from(xp.len()).ok()?);
+        let n = <T::Convert as CheckedConvert<usize, T::Number>>::convert(xp.len())?;
 
         // Same coin
         if !(i != j) {
@@ -587,12 +603,12 @@ impl<T: Config> Pallet<T> {
                 .checked_div(&two.checked_mul(&y)?.checked_add(&b)?.checked_sub(&d)?)?;
 
             // Equality with the specified precision
-            if y.cmp(&y_prev) == Ordering::Greater {
-                if y.checked_sub(&y_prev)?.cmp(&prec) != Ordering::Greater {
+            if y > y_prev {
+                if y.checked_sub(&y_prev)? <= prec {
                     return Some(y);
                 }
             } else {
-                if y_prev.checked_sub(&y)?.cmp(&prec) != Ordering::Greater {
+                if y_prev.checked_sub(&y)? <= prec {
                     return Some(y);
                 }
             }
@@ -629,14 +645,8 @@ pub mod traits {
         fn total_issuance(asset: AssetId) -> Balance;
     }
 
-    /// Constants required for math calculations
-    pub trait Const<N> {
-        /// Value that represents precision used for fixed-point iteration method for type `N`
-        fn prec() -> N;
-        /// Value that represents 0 for type `N`
-        fn zero() -> N;
-        /// Value that represents 1 for type `N`
-        fn one() -> N;
+    pub trait CheckedConvert<A, B> {
+        fn convert(a: A) -> Option<B>;
     }
 }
 

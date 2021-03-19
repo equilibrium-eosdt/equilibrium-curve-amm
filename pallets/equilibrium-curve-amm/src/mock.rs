@@ -1,5 +1,5 @@
 use crate as curve_amm;
-use crate::traits::Const;
+use crate::traits::CheckedConvert;
 use frame_support::{
     dispatch::{DispatchError, DispatchResult},
     parameter_types,
@@ -7,13 +7,15 @@ use frame_support::{
 };
 use frame_system as system;
 use sp_core::H256;
-use sp_runtime::traits::Saturating;
+use sp_runtime::traits::{Convert, Saturating};
+use sp_runtime::Permill;
 use sp_runtime::{
     testing::Header,
     traits::{BlakeTwo256, IdentityLookup},
     ModuleId,
 };
 use sp_runtime::{FixedPointNumber, FixedU128};
+use sp_std::convert::TryFrom;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -80,28 +82,45 @@ impl pallet_balances::Config for Test {
 parameter_types! {
     pub const CreationFee: Balance = 999;
     pub const CurveAmmModuleId: ModuleId = ModuleId(*b"eq/crvam");
+    pub Precision: FixedU128 = FixedU128::saturating_from_rational(1, 1_000_000);
 }
 
 pub type Balance = u128;
 type Number = FixedU128;
-type IntermediateNumber = u128;
-pub struct ConstFixedU128;
 
-impl Const<FixedU128> for ConstFixedU128 {
-    fn zero() -> FixedU128 {
-        FixedU128::zero()
-    }
+type AssetId = i64;
 
-    fn one() -> FixedU128 {
-        FixedU128::one()
-    }
+pub struct FixedU128Convert;
 
-    fn prec() -> FixedU128 {
-        FixedU128::saturating_from_rational(1, 1_000_000)
+impl Convert<Permill, FixedU128> for FixedU128Convert {
+    fn convert(a: Permill) -> FixedU128 {
+        a.into()
     }
 }
 
-type AssetId = i64;
+impl Convert<Balance, FixedU128> for FixedU128Convert {
+    fn convert(a: Balance) -> FixedU128 {
+        FixedU128::saturating_from_integer(a)
+    }
+}
+
+impl Convert<u8, FixedU128> for FixedU128Convert {
+    fn convert(a: u8) -> FixedU128 {
+        FixedU128::saturating_from_integer(a)
+    }
+}
+
+impl CheckedConvert<usize, FixedU128> for FixedU128Convert {
+    fn convert(a: usize) -> Option<FixedU128> {
+        Some(FixedU128::saturating_from_integer(u128::try_from(a).ok()?))
+    }
+}
+
+impl Convert<FixedU128, Balance> for FixedU128Convert {
+    fn convert(a: FixedU128) -> Balance {
+        a.into_inner() / FixedU128::accuracy()
+    }
+}
 
 pub struct EmptyAssets;
 
@@ -110,24 +129,24 @@ impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for EmptyAssets {
         Ok(0)
     }
 
-    fn mint(asset: AssetId, dest: AccountId, amount: Balance) -> DispatchResult {
+    fn mint(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult {
         Ok(())
     }
 
-    fn burn(asset: AssetId, dest: AccountId, amount: Balance) -> DispatchResult {
+    fn burn(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult {
         Ok(())
     }
 
     fn transfer(
         asset: AssetId,
-        source: AccountId,
-        dest: AccountId,
+        source: &AccountId,
+        dest: &AccountId,
         amount: Balance,
     ) -> DispatchResult {
         Ok(())
     }
 
-    fn balance(asset: AssetId, who: AccountId) -> Balance {
+    fn balance(asset: AssetId, who: &AccountId) -> Balance {
         0
     }
 
@@ -153,8 +172,8 @@ impl curve_amm::Config for Test {
     type ModuleId = CurveAmmModuleId;
 
     type Number = Number;
-    type IntermediateNumber = IntermediateNumber;
-    type Const = ConstFixedU128;
+    type Precision = Precision;
+    type Convert = FixedU128Convert;
 }
 
 // Build genesis storage according to the mock runtime.

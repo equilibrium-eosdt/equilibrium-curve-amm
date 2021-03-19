@@ -1176,24 +1176,24 @@ impl<T: Config> Assets<T::AssetId, T::Balance, T::AccountId> for Pallet<T> {
         Ok(T::AssetId::default())
     }
 
-    fn mint(asset: T::AssetId, dest: T::AccountId, amount: T::Balance) -> DispatchResult {
+    fn mint(asset: T::AssetId, dest: &T::AccountId, amount: T::Balance) -> DispatchResult {
         Ok(())
     }
 
-    fn burn(asset: T::AssetId, dest: T::AccountId, amount: T::Balance) -> DispatchResult {
+    fn burn(asset: T::AssetId, dest: &T::AccountId, amount: T::Balance) -> DispatchResult {
         Ok(())
     }
 
     fn transfer(
         asset: T::AssetId,
-        source: T::AccountId,
-        dest: T::AccountId,
+        source: &T::AccountId,
+        dest: &T::AccountId,
         amount: T::Balance,
     ) -> DispatchResult {
         Ok(())
     }
 
-    fn balance(asset: T::AssetId, who: T::AccountId) -> T::Balance {
+    fn balance(asset: T::AssetId, who: &T::AccountId) -> T::Balance {
         T::Balance::default()
     }
 
