@@ -118,7 +118,15 @@ pub mod pallet {
             PoolId,
             Vec<T::Balance>,
             Vec<T::Balance>,
-            T::Number,
+            T::Balance,
+            T::Balance,
+        ),
+        LiquidityRemoved(
+            T::AccountId,
+            PoolId,
+            Vec<T::Balance>,
+            Vec<T::Balance>,
+            T::Balance,
             T::Balance,
         ),
     }
@@ -140,9 +148,9 @@ pub mod pallet {
         Math,
         /// Specified asset amount is wrong
         WrongAssetAmount,
-        /// Minimum specified amount is not reached
-        MinAmountNotReached,
-        /// Available amount is not enough to complete operation
+        /// During adding or removing liquidity required amount of LP-token did not reached
+        LpAmountNotReached,
+        /// Source does not have required amount of coins to complete operation
         InsufficientFunds,
     }
 
@@ -231,7 +239,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             pool_id: PoolId,
             amounts: Vec<T::Balance>,
-            min_mint_amount: T::Number,
+            min_mint_amount: T::Balance,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
@@ -317,7 +325,7 @@ pub mod pallet {
                             .ok_or(Error::<T>::Math)?;
 
                             fees[i] = fee.checked_mul(&difference).ok_or(Error::<T>::Math)?;
-                            // self.balances[i] = new_balance - (fees[i] * admin_fee)
+                            // pool.balances[i] = new_balance - (fees[i] * admin_fee)
                             pool.balances[i] =
                                 (|| new_balance.checked_sub(&fees[i].checked_mul(&admin_fee)?))()
                                     .ok_or(Error::<T>::Math)?;
@@ -341,8 +349,11 @@ pub mod pallet {
                     }
 
                     ensure!(
-                        mint_amount >= min_mint_amount,
-                        Error::<T>::MinAmountNotReached
+                        mint_amount
+                            >= <T::Convert as Convert<T::Balance, T::Number>>::convert(
+                                min_mint_amount
+                            ),
+                        Error::<T>::LpAmountNotReached
                     );
 
                     let new_token_supply = token_supply
@@ -383,12 +394,188 @@ pub mod pallet {
                         pool_id,
                         amounts,
                         fees,
-                        d1,
+                        <T::Convert as Convert<T::Number, T::Balance>>::convert(d1),
                         <T::Convert as Convert<T::Number, T::Balance>>::convert(new_token_supply),
                     ))
                 })?;
 
             Self::deposit_event(Event::LiquidityAdded(
+                provider,
+                pool_id,
+                token_amounts,
+                fees,
+                invariant,
+                token_supply,
+            ));
+
+            Ok(().into())
+        }
+
+        /// Withdraw coins from the pool in an imbalanced amount.
+        /// `amounts` - list of amounts of underlying coins to withdraw
+        /// `max_burn_amount` - maximum amount of LP token to burn in the withdrawal
+        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        pub fn remove_liquidity_imbalance(
+            origin: OriginFor<T>,
+            pool_id: PoolId,
+            amounts: Vec<T::Balance>,
+            max_burn_amount: T::Balance,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+
+            let zero = Self::get_number(0);
+
+            let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
+                Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
+                    let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
+
+                    let n_coins = pool.assets.len();
+
+                    ensure!(
+                        n_coins == pool.balances.len(),
+                        Error::<T>::InconsistentStorage
+                    );
+
+                    let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+
+                    let old_balances = pool.balances.clone();
+
+                    let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
+
+                    let mut new_balances = old_balances.clone();
+                    let n_amounts = amounts
+                        .iter()
+                        .copied()
+                        .map(<T::Convert as Convert<T::Balance, T::Number>>::convert)
+                        .collect::<Vec<_>>();
+                    for i in 0..n_coins {
+                        new_balances[i] = new_balances[i]
+                            .checked_sub(&n_amounts[i])
+                            .ok_or(Error::<T>::Math)?;
+                    }
+
+                    let d1 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
+
+                    // Deposit x + withdraw y would charge about same
+                    // fees as a swap. Otherwise, one could exchange w/o paying fees.
+                    // And this formula leads to exactly that equality
+                    // fee = pool.fee * n_coins / (4 * (n_coins - 1))
+                    let fee = (|| {
+                        let n_coins =
+                            <T::Convert as CheckedConvert<usize, T::Number>>::convert(n_coins)?;
+                        let one = Self::get_number(1);
+                        let four = one
+                            .checked_add(&one)?
+                            .checked_add(&one)?
+                            .checked_add(&one)?;
+
+                        <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee)
+                            .checked_mul(&n_coins)?
+                            .checked_div(&four.checked_mul(&n_coins.checked_sub(&one)?)?)
+                    })()
+                    .ok_or(Error::<T>::Math)?;
+                    let admin_fee =
+                        <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
+                    let mut fees = vec![zero; n_coins];
+                    for i in 0..n_coins {
+                        let new_balance = new_balances[i];
+
+                        // ideal_balance = d1 * old_balances[i] / d0
+                        let ideal_balance =
+                            (|| d1.checked_mul(&old_balances[i])?.checked_div(&d0))()
+                                .ok_or(Error::<T>::Math)?;
+
+                        // difference = abs(ideal_balance - new_balance)
+                        let difference = (if ideal_balance > new_balance {
+                            ideal_balance.checked_sub(&new_balance)
+                        } else {
+                            new_balance.checked_sub(&ideal_balance)
+                        })
+                        .ok_or(Error::<T>::Math)?;
+
+                        fees[i] = fee.checked_mul(&difference).ok_or(Error::<T>::Math)?;
+
+                        // pool.balances[i] = new_balance - (fees[i] * admin_fee)
+                        pool.balances[i] =
+                            (|| new_balance.checked_sub(&fees[i].checked_mul(&admin_fee)?))()
+                                .ok_or(Error::<T>::Math)?;
+
+                        new_balances[i] = new_balances[i]
+                            .checked_sub(&fees[i])
+                            .ok_or(Error::<T>::Math)?;
+                    }
+                    let d2 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
+
+                    let token_supply = <T::Convert as Convert<T::Balance, T::Number>>::convert(
+                        T::Assets::total_issuance(pool.pool_asset),
+                    );
+                    // token_amount = token_supply * (d0 - d2) / d0
+                    let token_amount = (|| {
+                        token_supply
+                            .checked_mul(&d0.checked_sub(&d2)?)?
+                            .checked_div(&d0)
+                    })()
+                    .ok_or(Error::<T>::Math)?;
+                    ensure!(token_amount != zero, Error::<T>::Math);
+                    // In case of rounding errors - make it unfavorable for the "attacker"
+                    let token_amount = token_amount
+                        .checked_add(&T::Precision::get())
+                        .ok_or(Error::<T>::Math)?;
+
+                    ensure!(
+                        token_amount
+                            <= <T::Convert as Convert<T::Balance, T::Number>>::convert(
+                                max_burn_amount
+                            ),
+                        Error::<T>::LpAmountNotReached
+                    );
+
+                    let new_token_supply = token_supply
+                        .checked_sub(&token_amount)
+                        .ok_or(Error::<T>::Math)?;
+
+                    T::Assets::burn(
+                        pool.pool_asset,
+                        &who,
+                        <T::Convert as Convert<T::Number, T::Balance>>::convert(token_amount),
+                    )?;
+
+                    // Ensure that for all tokens we have sufficient amount
+                    for i in 0..n_coins {
+                        ensure!(
+                            T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account())
+                                >= amounts[i],
+                            Error::<T>::InsufficientFunds
+                        );
+                    }
+
+                    for i in 0..n_coins {
+                        if n_amounts[i] > zero {
+                            T::Assets::transfer(
+                                pool.assets[i],
+                                &T::ModuleId::get().into_account(),
+                                &who,
+                                amounts[i],
+                            )?;
+                        }
+                    }
+
+                    let fees = fees
+                        .into_iter()
+                        .map(|x| <T::Convert as Convert<T::Number, T::Balance>>::convert(x))
+                        .collect::<Vec<T::Balance>>();
+
+                    Ok((
+                        who.clone(),
+                        pool_id,
+                        amounts,
+                        fees,
+                        <T::Convert as Convert<T::Number, T::Balance>>::convert(d1),
+                        <T::Convert as Convert<T::Number, T::Balance>>::convert(new_token_supply),
+                    ))
+                })?;
+
+            Self::deposit_event(Event::LiquidityRemoved(
                 provider,
                 pool_id,
                 token_amounts,
