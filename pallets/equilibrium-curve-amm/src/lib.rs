@@ -136,6 +136,7 @@ pub mod pallet {
             T::Balance,
             T::Balance,
         ),
+        RemoveLiquidityOne(T::AccountId, PoolId, T::Balance, T::Balance, T::Balance),
     }
 
     /// Error type for Equilibrium Curve AMM pallet
@@ -303,10 +304,7 @@ pub mod pallet {
                             let n_coins =
                                 <T::Convert as CheckedConvert<usize, T::Number>>::convert(n_coins)?;
                             let one = Self::get_number(1);
-                            let four = one
-                                .checked_add(&one)?
-                                .checked_add(&one)?
-                                .checked_add(&one)?;
+                            let four = Self::get_number(4);
 
                             <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee)
                                 .checked_mul(&n_coins)?
@@ -710,6 +708,109 @@ pub mod pallet {
 
             Ok(().into())
         }
+
+        /// Withdraw a signe coin from the pool.
+        /// `token_amount` - amount of LP tokens to burn in the withdrawal,
+        /// `i` - index value of the coin to withdraw,
+        /// `min_amount` - minimum amount of coin to receive.
+        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        pub fn remove_liquidity_one_coin(
+            origin: OriginFor<T>,
+            pool_id: PoolId,
+            token_amount: T::Balance,
+            i: u32,
+            min_amount: T::Balance,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+
+            let i = i as usize;
+            let zero = Self::get_number(0);
+
+            let n_token_amount =
+                <T::Convert as Convert<T::Balance, T::Number>>::convert(token_amount);
+
+            let (provider, pool_id, burn_amount, dy, new_token_supply) =
+                Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
+                    let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
+
+                    let n_coins = pool.assets.len();
+
+                    ensure!(
+                        n_coins == pool.balances.len(),
+                        Error::<T>::InconsistentStorage
+                    );
+
+                    let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+
+                    let token_supply = <T::Convert as Convert<T::Balance, T::Number>>::convert(
+                        T::Assets::total_issuance(pool.pool_asset),
+                    );
+                    let pool_fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
+
+                    let (dy, dy_fee) = Self::calc_withdraw_one_coin(
+                        n_token_amount,
+                        i,
+                        &pool.balances,
+                        ann,
+                        token_supply,
+                        pool_fee,
+                    )
+                    .ok_or(Error::<T>::Math)?;
+
+                    ensure!(
+                        dy > <T::Convert as Convert<T::Balance, T::Number>>::convert(min_amount),
+                        Error::<T>::RequiredAmountNotReached
+                    );
+
+                    let admin_fee =
+                        <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
+
+                    // pool.balances[i] = pool.balances[i] - (dy + dy_fee * pool.admin_fee)
+                    pool.balances[i] = (|| {
+                        pool.balances[i]
+                            .checked_sub(&dy.checked_add(&dy_fee.checked_mul(&admin_fee)?)?)
+                    })()
+                    .ok_or(Error::<T>::Math)?;
+
+                    let new_token_supply = token_supply
+                        .checked_add(&n_token_amount)
+                        .ok_or(Error::<T>::Math)?;
+
+                    let b_dy = <T::Convert as Convert<T::Number, T::Balance>>::convert(dy);
+
+                    ensure!(
+                        T::Assets::balance(pool.assets[i], &who) >= b_dy,
+                        Error::<T>::InsufficientFunds
+                    );
+
+                    T::Assets::burn(pool.pool_asset, &who, token_amount)?;
+
+                    T::Assets::transfer(
+                        pool.assets[i],
+                        &who,
+                        &T::ModuleId::get().into_account(),
+                        b_dy,
+                    )?;
+
+                    Ok((
+                        who.clone(),
+                        pool_id,
+                        token_amount,
+                        b_dy,
+                        <T::Convert as Convert<T::Number, T::Balance>>::convert(new_token_supply),
+                    ))
+                })?;
+
+            Self::deposit_event(Event::RemoveLiquidityOne(
+                provider,
+                pool_id,
+                burn_amount,
+                dy,
+                new_token_supply,
+            ));
+
+            Ok(().into())
+        }
     }
 }
 
@@ -926,6 +1027,130 @@ impl<T: Config> Pallet<T> {
         }
 
         None
+    }
+
+    /// Calculate `x[i]` if one reduces `d` from being calculated for `xp` to `d`.
+    /// Done by solving quadratic equation iteratively.
+    ///
+    /// ```latex
+    /// \[x_1^2 + x_1 \cdot \left(sum' - \frac{A \cdot n^n - 1) \cdot D}{A \cdot n^n}\right) = \frac{D^{n + 1}}{n^{2n} \cdot prod' \cdot A}\]
+    /// \[x_1^2 + b \cdot x_1 = c\]
+    /// \[x_1 = \frac{x_1^2 + c}{2x_1 + b}\]
+    /// ```
+    pub(crate) fn get_y_d(
+        i: usize,
+        d: T::Number,
+        xp: &[T::Number],
+        ann: T::Number,
+    ) -> Option<T::Number> {
+        let prec = T::Precision::get();
+        let zero = Self::get_number(0);
+        let two = Self::get_number(2);
+
+        let n_coins = <T::Convert as CheckedConvert<usize, T::Number>>::convert(xp.len())?;
+
+        if i >= xp.len() {
+            return None;
+        }
+
+        let mut c = d;
+        let mut s = zero;
+        let mut x = zero;
+
+        for k in 0..xp.len() {
+            if k != i {
+                x = xp[k];
+            } else {
+                continue;
+            }
+            s = s.checked_add(&x)?;
+            // c = c * d / (x * n_coins)
+            c = c.checked_mul(&d)?.checked_div(&x.checked_mul(&n_coins)?)?;
+        }
+        // c = c * d / (ann * n_coins)
+        c = c
+            .checked_mul(&d)?
+            .checked_div(&ann.checked_mul(&n_coins)?)?;
+        // b = s + d / ann
+        let b = s.checked_add(&d.checked_div(&ann)?)?;
+        let mut y = d;
+
+        for k in 0..xp.len() {
+            let y_prev = y;
+            // y = (y*y + c) / (2 * y + b - d)
+            y = y
+                .checked_mul(&y)?
+                .checked_add(&c)?
+                .checked_div(&two.checked_mul(&y)?.checked_add(&b)?.checked_sub(&d)?)?;
+
+            // Equality with the specified precision
+            if y > y_prev {
+                if y.checked_sub(&y_prev)? <= prec {
+                    return Some(y);
+                }
+            } else {
+                if y_prev.checked_sub(&y)? <= prec {
+                    return Some(y);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// First, need to calculate:
+    /// - current `d`,
+    /// - solve equation against `y_i` for `d` - token_amount.
+    pub(crate) fn calc_withdraw_one_coin(
+        token_amount: T::Number,
+        i: usize,
+        xp: &[T::Number],
+        ann: T::Number,
+        total_supply: T::Number,
+        pool_fee: T::Number,
+    ) -> Option<(T::Number, T::Number)> {
+        let prec = T::Precision::get();
+        let one = Self::get_number(1);
+        let four = Self::get_number(4);
+
+        let n_coins = <T::Convert as CheckedConvert<usize, T::Number>>::convert(xp.len())?;
+
+        let d0 = Self::get_d(xp, ann)?;
+        // d1 = d0 - token_amount * d0 / total_supply
+        let d1 = d0.checked_sub(&token_amount.checked_mul(&d0)?.checked_div(&total_supply)?)?;
+        let new_y = Self::get_y_d(i, d1, xp, ann)?;
+        let mut xp_reduced = xp.to_vec();
+
+        // Deposit x + withdraw y would charge about same
+        // fees as a swap. Otherwise, one could exchange w/o paying fees.
+        // And this formula leads to exactly that equality
+        // fee = pool_fee * n_coins / (4 * (n_coins - 1))
+        let fee = pool_fee
+            .checked_mul(&n_coins)?
+            .checked_div(&four.checked_mul(&n_coins.checked_sub(&one)?)?)?;
+
+        for j in 0..xp.len() {
+            let dx_expected = if j == i {
+                // dx_expected = xp[j] * d1 / d0 - new_y
+                xp[j]
+                    .checked_mul(&d1)?
+                    .checked_div(&d0)?
+                    .checked_sub(&new_y)?
+            } else {
+                // dx_expected = xp[j] - xp[j] * d1 / d0
+                xp[j].checked_sub(&xp[j].checked_mul(&d1)?.checked_div(&d0)?)?
+            };
+            // xp_reduced[j] = xp_reduced[j] - fee * dx_expected
+            xp_reduced[j] = xp_reduced[j].checked_sub(&fee.checked_mul(&dx_expected)?)?;
+        }
+
+        let dy = xp_reduced[i].checked_sub(&Self::get_y_d(i, d1, &xp_reduced, ann)?)?;
+        // Withdraw less to account for rounding errors
+        let dy = dy.checked_sub(&prec)?;
+        // Without fees
+        let dy_0 = xp[i].checked_sub(&new_y)?;
+
+        Some((dy, dy_0))
     }
 }
 
