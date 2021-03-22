@@ -112,8 +112,8 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Pool with specified id created successfully
-        PoolCreated(T::AccountId, PoolId),
-        LiquidityAdded(
+        CreatePool(T::AccountId, PoolId),
+        AddLiquidity(
             T::AccountId,
             PoolId,
             Vec<T::Balance>,
@@ -121,14 +121,14 @@ pub mod pallet {
             T::Balance,
             T::Balance,
         ),
-        LiquidityRemoved(
+        RemoveLiquidity(
             T::AccountId,
             PoolId,
             Vec<T::Balance>,
             Vec<T::Balance>,
             T::Balance,
         ),
-        ImbalanceLiquidityRemoved(
+        RemoveLiquidityImbalance(
             T::AccountId,
             PoolId,
             Vec<T::Balance>,
@@ -233,7 +233,7 @@ pub mod pallet {
                     Ok(pool_id)
                 })?;
 
-            Self::deposit_event(Event::PoolCreated(who.clone(), pool_id));
+            Self::deposit_event(Event::CreatePool(who.clone(), pool_id));
 
             Ok(().into())
         }
@@ -406,7 +406,7 @@ pub mod pallet {
                     ))
                 })?;
 
-            Self::deposit_event(Event::LiquidityAdded(
+            Self::deposit_event(Event::AddLiquidity(
                 provider,
                 pool_id,
                 token_amounts,
@@ -524,7 +524,7 @@ pub mod pallet {
                     ))
                 })?;
 
-            Self::deposit_event(Event::LiquidityRemoved(
+            Self::deposit_event(Event::RemoveLiquidity(
                 provider,
                 pool_id,
                 token_amounts,
@@ -699,7 +699,7 @@ pub mod pallet {
                     ))
                 })?;
 
-            Self::deposit_event(Event::ImbalanceLiquidityRemoved(
+            Self::deposit_event(Event::RemoveLiquidityImbalance(
                 provider,
                 pool_id,
                 token_amounts,
