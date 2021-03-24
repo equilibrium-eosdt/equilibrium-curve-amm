@@ -27,6 +27,12 @@ use sp_std::convert::TryFrom;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 
+use sp_runtime::MultiAddress;
+use sp_runtime::traits::AccountIdConversion;
+use frame_system::RawOrigin;
+use sp_runtime::traits::Dispatchable;
+use equilibrium_assets::Call as AssetsCall;
+
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
     construct_runtime,
@@ -336,6 +342,103 @@ impl Convert<FixedU128, Balance> for FixedU128Convert {
     }
 }
 
+pub struct FrameAssets;
+
+fn random_u32_seed() -> u32 {
+        let seed = RandomnessCollectiveFlip::random_seed();
+        let seed_bytes = seed.as_fixed_bytes();
+        let small_seed_bytes = [seed_bytes[0], seed_bytes[1], seed_bytes[2], seed_bytes[3]];
+        let small_seed: u32 = u32::from_le_bytes(small_seed_bytes);
+
+        small_seed
+}
+
+/// See https://en.wikipedia.org/wiki/Linear_congruential_generator
+fn lcg(seed: u32) -> u32 {
+    const a: u32 = 1664525;
+    const c: u32 = 1013904223;
+    
+    a.overflowing_mul(seed).0.overflowing_add(c).0
+}
+
+impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for FrameAssets {
+    fn create_asset() -> Result<AssetId, DispatchError> {
+
+        let module_id = CurveAmmModuleId::get();
+        let account_id: AccountId = module_id.into_account();
+        let raw_origin = RawOrigin::Signed(account_id.clone());
+        let origin: Origin = raw_origin.into();
+
+        let multi_address: MultiAddress<AccountId, ()> = MultiAddress::Id(account_id);
+
+        // Guessing unused asset id
+        let mut seed = random_u32_seed();
+        for i in 0..10 {
+            seed = lcg(seed);
+
+            let call = Call::Assets(AssetsCall::force_create(seed, multi_address.clone(), 0, 1));
+            if call.dispatch(origin.clone()).map_err(|x| x.error).is_ok() {
+                return Ok(seed);
+            }
+        }
+
+        Err(DispatchError::Other(&"Out of luck"))
+    }
+
+    fn mint(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult {
+        let module_id = CurveAmmModuleId::get();
+        let account_id: AccountId = module_id.into_account();
+        let raw_origin = RawOrigin::Signed(account_id.clone());
+        let origin: Origin = raw_origin.into();
+
+        let multi_address: MultiAddress<AccountId, ()> = MultiAddress::Id(dest.clone());
+
+        let call = Call::Assets(AssetsCall::mint(asset, multi_address, amount));
+        call.dispatch(origin.clone()).map_err(|x| x.error)?;
+
+        Ok(())
+    }
+
+    fn burn(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult {
+        let module_id = CurveAmmModuleId::get();
+        let account_id: AccountId = module_id.into_account();
+        let raw_origin = RawOrigin::Signed(account_id.clone());
+        let origin: Origin = raw_origin.into();
+
+        let multi_address: MultiAddress<AccountId, ()> = MultiAddress::Id(dest.clone());
+
+        let call = Call::Assets(AssetsCall::burn(asset, multi_address, amount));
+        call.dispatch(origin.clone()).map_err(|x| x.error)?;
+
+        Ok(())
+    }
+
+    fn transfer(
+        asset: AssetId,
+        source: &AccountId,
+        dest: &AccountId,
+        amount: Balance,
+    ) -> DispatchResult {
+        let raw_origin = RawOrigin::Signed(source.clone());
+        let origin: Origin = raw_origin.into();
+
+        let multi_address: MultiAddress<AccountId, ()> = MultiAddress::Id(dest.clone());
+
+        let call = Call::Assets(AssetsCall::transfer(asset, multi_address, amount));
+        call.dispatch(origin.clone()).map_err(|x| x.error)?;
+
+        Ok(())
+    }
+
+    fn balance(asset: AssetId, who: &AccountId) -> Balance {
+        Assets::balance(asset, who.clone())
+    }
+
+    fn total_issuance(asset: AssetId) -> Balance {
+        Assets::total_supply(asset)
+    }
+}
+
 /// Configure the pallet equilibrium_curve_amm in pallets/equilibrium_curve_amm.
 impl equilibrium_curve_amm::Config for Runtime {
     type Event = Event;
@@ -343,7 +446,7 @@ impl equilibrium_curve_amm::Config for Runtime {
     type Balance = Balance;
     type Currency = pallet_balances::Pallet<Runtime>;
     type CreationFee = CreationFee;
-    type Assets = equilibrium_assets::Pallet<Runtime>;
+    type Assets = FrameAssets;
     type OnUnbalanced = EmptyUnbalanceHandler;
     type ModuleId = CurveAmmModuleId;
 
