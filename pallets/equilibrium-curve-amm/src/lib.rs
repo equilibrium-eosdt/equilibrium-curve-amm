@@ -121,6 +121,7 @@ pub mod pallet {
             T::Balance,
             T::Balance,
         ),
+        TokenExchange(T::AccountId, PoolId, u32, T::Balance, u32, T::Balance),
         RemoveLiquidity(
             T::AccountId,
             PoolId,
@@ -412,6 +413,88 @@ pub mod pallet {
                 invariant,
                 token_supply,
             ));
+
+            Ok(().into())
+        }
+
+        /// Perform an exchange between two coins.
+        /// `i` - index value of the coin to send,
+        /// `j` - index value of the coin to recieve,
+        /// `dx` - amount of `i` being exchanged,
+        /// `min_dy` - minimum amount of `j` to receive.
+        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        pub fn exchange(
+            origin: OriginFor<T>,
+            pool_id: PoolId,
+            i: u32,
+            j: u32,
+            dx: T::Balance,
+            min_dy: T::Balance,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+
+            let zero = Self::get_number(0);
+            let one = Self::get_number(1);
+
+            // sold_id, tokens_sold, bought_id, tokens_bought
+            let (provider, pool_id, dy) =
+                Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
+                    let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
+
+                    let i = i as usize;
+                    let j = j as usize;
+
+                    let n_dx = <T::Convert as Convert<T::Balance, T::Number>>::convert(dx);
+                    let n_min_dy = <T::Convert as Convert<T::Balance, T::Number>>::convert(min_dy);
+
+                    let xp = pool.balances.clone();
+
+                    // xp[i] + dx
+                    let x = xp[i].checked_add(&n_dx).ok_or(Error::<T>::Math)?;
+
+                    let n_coins = pool.assets.len();
+                    let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+                    let y = Self::get_y(i, j, x, &xp, ann).ok_or(Error::<T>::Math)?;
+
+                    // -1 just in case there were some rounding errors
+                    // dy = xp[j] - y - 1
+                    let n_dy =
+                        (|| xp[j].checked_sub(&y)?.checked_sub(&one))().ok_or(Error::<T>::Math)?;
+
+                    let fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
+                    let dy_fee = n_dy.checked_mul(&fee).ok_or(Error::<T>::Math)?;
+                    ensure!(n_dy >= n_min_dy, Error::<T>::RequiredAmountNotReached);
+
+                    let admin_fee =
+                        <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
+                    let dy_admin_fee = dy_fee.checked_mul(&admin_fee).ok_or(Error::<T>::Math)?;
+
+                    pool.balances[i] = xp[i].checked_add(&n_dx).ok_or(Error::<T>::Math)?;
+                    // When rounding errors happen, we undercharge admin fee in favor of LP
+                    // pool.balances[j] = xp[j] - n_dy - dy_admin_fee
+                    pool.balances[j] = (|| xp[j].checked_sub(&n_dy)?.checked_sub(&dy_admin_fee))()
+                        .ok_or(Error::<T>::Math)?;
+
+                    let dy = <T::Convert as Convert<T::Number, T::Balance>>::convert(n_dy);
+
+                    T::Assets::transfer(
+                        pool.assets[i],
+                        &who,
+                        &T::ModuleId::get().into_account(),
+                        dx,
+                    )?;
+
+                    T::Assets::transfer(
+                        pool.assets[j],
+                        &T::ModuleId::get().into_account(),
+                        &who,
+                        dy,
+                    )?;
+
+                    Ok((who.clone(), pool_id, dy))
+                })?;
+
+            Self::deposit_event(Event::TokenExchange(provider, pool_id, i, dx, j, dy));
 
             Ok(().into())
         }
