@@ -11,7 +11,7 @@ use pallet_grandpa::{AuthorityId as GrandpaId, AuthorityList as GrandpaAuthority
 use sp_api::impl_runtime_apis;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
-use sp_runtime::traits::{Saturating, Convert};
+use sp_runtime::traits::Convert;
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, Block as BlockT, IdentifyAccount, NumberFor, Verify,
 };
@@ -31,7 +31,7 @@ use sp_runtime::MultiAddress;
 use sp_runtime::traits::AccountIdConversion;
 use frame_system::RawOrigin;
 use sp_runtime::traits::Dispatchable;
-use equilibrium_assets::Call as AssetsCall;
+use pallet_assets::Call as AssetsCall;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -281,7 +281,7 @@ parameter_types! {
     pub const MetadataDepositPerByte: Balance = 1;
 }
 
-impl equilibrium_assets::Config for Runtime {
+impl pallet_assets::Config for Runtime {
     type Event = Event;
     type Balance = Balance;
     type AssetId = AssetId;
@@ -292,7 +292,7 @@ impl equilibrium_assets::Config for Runtime {
     type StringLimit = StringLimit;
     type MetadataDepositBase = MetadataDepositBase;
     type MetadataDepositPerByte = MetadataDepositPerByte;
-    type WeightInfo = equilibrium_assets::weights::SubstrateWeight<Runtime>;
+    type WeightInfo = pallet_assets::weights::SubstrateWeight<Runtime>;
 }
 
 parameter_types! {
@@ -355,10 +355,10 @@ fn random_u32_seed() -> u32 {
 
 /// See https://en.wikipedia.org/wiki/Linear_congruential_generator
 fn lcg(seed: u32) -> u32 {
-    const a: u32 = 1664525;
-    const c: u32 = 1013904223;
+    const A: u32 = 1664525;
+    const C: u32 = 1013904223;
     
-    a.overflowing_mul(seed).0.overflowing_add(c).0
+    A.overflowing_mul(seed).0.overflowing_add(C).0
 }
 
 impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for FrameAssets {
@@ -373,7 +373,7 @@ impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for Fram
 
         // Guessing unused asset id
         let mut seed = random_u32_seed();
-        for i in 0..10 {
+        for _ in 0..10 {
             seed = lcg(seed);
 
             let call = Call::Assets(AssetsCall::force_create(seed, multi_address.clone(), 0, 1));
@@ -467,7 +467,7 @@ construct_runtime!(
         Timestamp: pallet_timestamp::{Module, Call, Storage, Inherent},
         Aura: pallet_aura::{Module, Config<T>},
         Grandpa: pallet_grandpa::{Module, Call, Storage, Config, Event},
-        Assets: equilibrium_assets::{Module, Call, Storage, Event<T>},
+        Assets: pallet_assets::{Module, Call, Storage, Event<T>},
         Balances: pallet_balances::{Module, Call, Storage, Config<T>, Event<T>},
         TransactionPayment: pallet_transaction_payment::{Module, Storage},
         Sudo: pallet_sudo::{Module, Call, Config<T>, Storage, Event<T>},
