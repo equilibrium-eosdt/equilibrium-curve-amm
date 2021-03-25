@@ -215,10 +215,7 @@ pub mod pallet {
                     Pools::<T>::try_mutate_exists(pool_id, |maybe_pool_info| -> DispatchResult {
                         // We expect that PoolInfos have sequential keys.
                         // No PoolInfo can have key greater or equal to PoolCount
-                        maybe_pool_info
-                            .as_ref()
-                            .map(|_| Err(Error::<T>::InconsistentStorage))
-                            .unwrap_or(Ok(()))?;
+                        ensure!(maybe_pool_info.is_none(), Error::<T>::InconsistentStorage);
 
                         let asset =
                             T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
@@ -280,14 +277,13 @@ pub mod pallet {
 
                     let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
 
-                    let token_supply = <T::Convert as Convert<T::Balance, T::Number>>::convert(
-                        T::Assets::total_issuance(pool.pool_asset),
-                    );
+                    let token_supply =
+                        Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
                     let mut new_balances = old_balances.clone();
                     let n_amounts = amounts
                         .iter()
                         .copied()
-                        .map(<T::Convert as Convert<T::Balance, T::Number>>::convert)
+                        .map(Self::convert_balance_to_number)
                         .collect::<Vec<_>>();
                     for i in 0..n_coins {
                         if token_supply == zero {
@@ -364,10 +360,7 @@ pub mod pallet {
                     }
 
                     ensure!(
-                        mint_amount
-                            >= <T::Convert as Convert<T::Balance, T::Number>>::convert(
-                                min_mint_amount
-                            ),
+                        mint_amount >= Self::convert_balance_to_number(min_mint_amount),
                         Error::<T>::RequiredAmountNotReached
                     );
 
@@ -396,12 +389,12 @@ pub mod pallet {
                     T::Assets::mint(
                         pool.pool_asset,
                         &who,
-                        <T::Convert as Convert<T::Number, T::Balance>>::convert(mint_amount),
+                        Self::convert_number_to_balance(mint_amount),
                     )?;
 
                     let fees = fees
                         .into_iter()
-                        .map(|x| <T::Convert as Convert<T::Number, T::Balance>>::convert(x))
+                        .map(|x| Self::convert_number_to_balance(x))
                         .collect::<Vec<T::Balance>>();
 
                     Ok((
@@ -409,8 +402,8 @@ pub mod pallet {
                         pool_id,
                         amounts,
                         fees,
-                        <T::Convert as Convert<T::Number, T::Balance>>::convert(d1),
-                        <T::Convert as Convert<T::Number, T::Balance>>::convert(new_token_supply),
+                        Self::convert_number_to_balance(d1),
+                        Self::convert_number_to_balance(new_token_supply),
                     ))
                 })?;
 
@@ -452,8 +445,8 @@ pub mod pallet {
                     let i = i as usize;
                     let j = j as usize;
 
-                    let n_dx = <T::Convert as Convert<T::Balance, T::Number>>::convert(dx);
-                    let n_min_dy = <T::Convert as Convert<T::Balance, T::Number>>::convert(min_dy);
+                    let n_dx = Self::convert_balance_to_number(dx);
+                    let n_min_dy = Self::convert_balance_to_number(min_dy);
 
                     let xp = pool.balances.clone();
 
@@ -483,7 +476,7 @@ pub mod pallet {
                     pool.balances[j] = (|| xp[j].checked_sub(&n_dy)?.checked_sub(&dy_admin_fee))()
                         .ok_or(Error::<T>::Math)?;
 
-                    let dy = <T::Convert as Convert<T::Number, T::Balance>>::convert(n_dy);
+                    let dy = Self::convert_number_to_balance(n_dy);
 
                     T::Assets::transfer(
                         pool.assets[i],
@@ -522,11 +515,11 @@ pub mod pallet {
 
             let zero = Self::get_number(0);
 
-            let n_amount = <T::Convert as Convert<T::Balance, T::Number>>::convert(amount);
+            let n_amount = Self::convert_balance_to_number(amount);
 
             let min_amounts = min_amounts
                 .into_iter()
-                .map(<T::Convert as Convert<T::Balance, T::Number>>::convert)
+                .map(Self::convert_balance_to_number)
                 .collect::<Vec<_>>();
 
             let (provider, pool_id, token_amounts, fees, token_supply) =
@@ -540,9 +533,8 @@ pub mod pallet {
                         Error::<T>::InconsistentStorage
                     );
 
-                    let token_supply = <T::Convert as Convert<T::Balance, T::Number>>::convert(
-                        T::Assets::total_issuance(pool.pool_asset),
-                    );
+                    let token_supply =
+                        Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
 
                     let mut n_amounts = vec![zero; n_coins];
 
@@ -570,17 +562,14 @@ pub mod pallet {
                     let amounts = n_amounts
                         .iter()
                         .copied()
-                        .map(<T::Convert as Convert<T::Number, T::Balance>>::convert)
+                        .map(Self::convert_number_to_balance)
                         .collect::<Vec<T::Balance>>();
 
                     let new_token_supply = token_supply
                         .checked_sub(&n_amount)
                         .ok_or(Error::<T>::Math)?;
 
-                    let fees = vec![
-                        <T::Convert as Convert<T::Number, T::Balance>>::convert(zero);
-                        n_coins
-                    ];
+                    let fees = vec![Self::convert_number_to_balance(zero); n_coins];
 
                     T::Assets::burn(pool.pool_asset, &who, amount)?;
 
@@ -609,7 +598,7 @@ pub mod pallet {
                         pool_id,
                         amounts,
                         fees,
-                        <T::Convert as Convert<T::Number, T::Balance>>::convert(new_token_supply),
+                        Self::convert_number_to_balance(new_token_supply),
                     ))
                 })?;
 
@@ -659,7 +648,7 @@ pub mod pallet {
                     let n_amounts = amounts
                         .iter()
                         .copied()
-                        .map(<T::Convert as Convert<T::Balance, T::Number>>::convert)
+                        .map(Self::convert_balance_to_number)
                         .collect::<Vec<_>>();
                     for i in 0..n_coins {
                         new_balances[i] = new_balances[i]
@@ -719,9 +708,8 @@ pub mod pallet {
                     }
                     let d2 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
 
-                    let token_supply = <T::Convert as Convert<T::Balance, T::Number>>::convert(
-                        T::Assets::total_issuance(pool.pool_asset),
-                    );
+                    let token_supply =
+                        Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
                     // token_amount = token_supply * (d0 - d2) / d0
                     let token_amount = (|| {
                         token_supply
@@ -736,10 +724,7 @@ pub mod pallet {
                         .ok_or(Error::<T>::Math)?;
 
                     ensure!(
-                        token_amount
-                            <= <T::Convert as Convert<T::Balance, T::Number>>::convert(
-                                max_burn_amount
-                            ),
+                        token_amount <= Self::convert_balance_to_number(max_burn_amount),
                         Error::<T>::RequiredAmountNotReached
                     );
 
@@ -750,7 +735,7 @@ pub mod pallet {
                     T::Assets::burn(
                         pool.pool_asset,
                         &who,
-                        <T::Convert as Convert<T::Number, T::Balance>>::convert(token_amount),
+                        Self::convert_number_to_balance(token_amount),
                     )?;
 
                     // Ensure that for all tokens we have sufficient amount
@@ -775,7 +760,7 @@ pub mod pallet {
 
                     let fees = fees
                         .into_iter()
-                        .map(|x| <T::Convert as Convert<T::Number, T::Balance>>::convert(x))
+                        .map(|x| Self::convert_number_to_balance(x))
                         .collect::<Vec<T::Balance>>();
 
                     Ok((
@@ -783,8 +768,8 @@ pub mod pallet {
                         pool_id,
                         amounts,
                         fees,
-                        <T::Convert as Convert<T::Number, T::Balance>>::convert(d1),
-                        <T::Convert as Convert<T::Number, T::Balance>>::convert(new_token_supply),
+                        Self::convert_number_to_balance(d1),
+                        Self::convert_number_to_balance(new_token_supply),
                     ))
                 })?;
 
@@ -816,8 +801,7 @@ pub mod pallet {
 
             let i = i as usize;
 
-            let n_token_amount =
-                <T::Convert as Convert<T::Balance, T::Number>>::convert(token_amount);
+            let n_token_amount = Self::convert_balance_to_number(token_amount);
 
             let (provider, pool_id, burn_amount, dy, new_token_supply) =
                 Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
@@ -832,9 +816,8 @@ pub mod pallet {
 
                     let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
 
-                    let token_supply = <T::Convert as Convert<T::Balance, T::Number>>::convert(
-                        T::Assets::total_issuance(pool.pool_asset),
-                    );
+                    let token_supply =
+                        Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
                     let pool_fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
 
                     let (dy, dy_fee) = Self::calc_withdraw_one_coin(
@@ -848,7 +831,7 @@ pub mod pallet {
                     .ok_or(Error::<T>::Math)?;
 
                     ensure!(
-                        dy > <T::Convert as Convert<T::Balance, T::Number>>::convert(min_amount),
+                        dy > Self::convert_balance_to_number(min_amount),
                         Error::<T>::RequiredAmountNotReached
                     );
 
@@ -866,7 +849,7 @@ pub mod pallet {
                         .checked_add(&n_token_amount)
                         .ok_or(Error::<T>::Math)?;
 
-                    let b_dy = <T::Convert as Convert<T::Number, T::Balance>>::convert(dy);
+                    let b_dy = Self::convert_number_to_balance(dy);
 
                     ensure!(
                         T::Assets::balance(pool.assets[i], &who) >= b_dy,
@@ -887,7 +870,7 @@ pub mod pallet {
                         pool_id,
                         token_amount,
                         b_dy,
-                        <T::Convert as Convert<T::Number, T::Balance>>::convert(new_token_supply),
+                        Self::convert_number_to_balance(new_token_supply),
                     ))
                 })?;
 
@@ -908,6 +891,14 @@ pub mod pallet {
 impl<T: Config> Pallet<T> {
     pub(crate) fn get_number(n: u8) -> T::Number {
         <T::Convert as Convert<u8, T::Number>>::convert(n)
+    }
+
+    pub(crate) fn convert_number_to_balance(number: T::Number) -> T::Balance {
+        <T::Convert as Convert<T::Number, T::Balance>>::convert(number)
+    }
+
+    pub(crate) fn convert_balance_to_number(balance: T::Balance) -> T::Number {
+        <T::Convert as Convert<T::Balance, T::Number>>::convert(balance)
     }
 
     /// Find `ann = amp * n^n` where `amp` - amplification coefficient,
@@ -1288,6 +1279,7 @@ pub type PoolId = u32;
 
 /// Storage record type for a pool
 #[derive(Encode, Decode, Clone, Default, PartialEq, Eq, Debug)]
+//pub struct PoolInfo<AssetId, Number, Balance> {
 pub struct PoolInfo<AssetId, Number> {
     /// LP multiasset
     pool_asset: AssetId,
@@ -1300,5 +1292,6 @@ pub struct PoolInfo<AssetId, Number> {
     /// Amount of the admin fee pool charges for the exchange
     admin_fee: Permill,
     /// Current balances excluding admin_fee
+    //balances: Vec<Balance>,
     balances: Vec<Number>,
 }
