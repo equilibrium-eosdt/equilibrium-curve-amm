@@ -344,25 +344,31 @@ impl Convert<FixedU128, Balance> for FixedU128Convert {
 
 pub struct FrameAssets;
 
-fn random_u32_seed() -> u32 {
-        let seed = RandomnessCollectiveFlip::random_seed();
-        let seed_bytes = seed.as_fixed_bytes();
-        let small_seed_bytes = [seed_bytes[0], seed_bytes[1], seed_bytes[2], seed_bytes[3]];
-        let small_seed: u32 = u32::from_le_bytes(small_seed_bytes);
-
-        small_seed
-}
-
-/// See https://en.wikipedia.org/wiki/Linear_congruential_generator
-fn lcg(seed: u32) -> u32 {
-    const A: u32 = 1664525;
-    const C: u32 = 1013904223;
-    
-    A.overflowing_mul(seed).0.overflowing_add(C).0
-}
-
+/// NOTE: Please do not use this implementation in production.
+/// It has some major issues. But it is a great example on the other hand.
+/// Trait `equilibrium_curve_amm::traits::Assets` expects that implementation
+/// will generate asset id for the new asset on it's own. But `pallet-assets` in contrast
+/// expects that asset id will be provided by the caller. The only thing we can do here
+/// is to guess asset id and hope that it is not in use.
 impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for FrameAssets {
     fn create_asset() -> Result<AssetId, DispatchError> {
+
+        fn random_u32_seed() -> u32 {
+                let seed = RandomnessCollectiveFlip::random_seed();
+                let seed_bytes = seed.as_fixed_bytes();
+                let small_seed_bytes = [seed_bytes[0], seed_bytes[1], seed_bytes[2], seed_bytes[3]];
+                let small_seed: u32 = u32::from_le_bytes(small_seed_bytes);
+
+                small_seed
+        }
+
+        /// See https://en.wikipedia.org/wiki/Linear_congruential_generator
+        fn lcg(seed: u32) -> u32 {
+            const A: u32 = 1664525;
+            const C: u32 = 1013904223;
+
+            A.overflowing_mul(seed).0.overflowing_add(C).0
+        }
 
         let module_id = CurveAmmModuleId::get();
         let account_id: AccountId = module_id.into_account();
