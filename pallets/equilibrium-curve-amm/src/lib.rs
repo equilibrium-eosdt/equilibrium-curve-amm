@@ -31,14 +31,12 @@ use frame_support::codec::{Decode, Encode};
 use frame_support::traits::Get;
 use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert};
 use sp_runtime::Permill;
-use sp_std::cmp::Ordering;
-use sp_std::convert::TryFrom;
 use sp_std::prelude::*;
 use traits::CheckedConvert;
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::{traits::Assets, traits::CheckedConvert, PoolId, PoolInfo};
+    use super::{traits::Assets, traits::CheckedConvert, PoolId, PoolInfo, PoolTokenIndex};
     use frame_support::{
         dispatch::{Codec, DispatchResult, DispatchResultWithPostInfo},
         pallet_prelude::*,
@@ -50,7 +48,6 @@ pub mod pallet {
     };
     use sp_runtime::{ModuleId, Permill};
     use sp_std::collections::btree_set::BTreeSet;
-    use sp_std::convert::TryFrom;
     use sp_std::iter::FromIterator;
     use sp_std::prelude::*;
 
@@ -113,6 +110,7 @@ pub mod pallet {
     pub enum Event<T: Config> {
         /// Pool with specified id created successfully
         CreatePool(T::AccountId, PoolId),
+        /// Liquidity added into pool
         AddLiquidity(
             T::AccountId,
             PoolId,
@@ -121,7 +119,16 @@ pub mod pallet {
             T::Balance,
             T::Balance,
         ),
-        TokenExchange(T::AccountId, PoolId, u32, T::Balance, u32, T::Balance),
+        /// Token exchange happened
+        TokenExchange(
+            T::AccountId,
+            PoolId,
+            PoolTokenIndex,
+            T::Balance,
+            PoolTokenIndex,
+            T::Balance,
+        ),
+        /// Liquidity removed from pool in balanced way
         RemoveLiquidity(
             T::AccountId,
             PoolId,
@@ -129,6 +136,7 @@ pub mod pallet {
             Vec<T::Balance>,
             T::Balance,
         ),
+        /// Liquidity removed from pool in imbalanced way
         RemoveLiquidityImbalance(
             T::AccountId,
             PoolId,
@@ -137,6 +145,7 @@ pub mod pallet {
             T::Balance,
             T::Balance,
         ),
+        /// Liquidity removed from pool only for one token
         RemoveLiquidityOne(T::AccountId, PoolId, T::Balance, T::Balance, T::Balance),
     }
 
@@ -293,7 +302,7 @@ pub mod pallet {
                     ensure!(d1 > d0, Error::<T>::WrongAssetAmount);
 
                     let mut fees = vec![zero; n_coins];
-                    let mut mint_amount = zero;
+                    let mint_amount;
 
                     // Only account for fees if we are not the first to deposit
                     if token_supply > zero {
@@ -426,14 +435,13 @@ pub mod pallet {
         pub fn exchange(
             origin: OriginFor<T>,
             pool_id: PoolId,
-            i: u32,
-            j: u32,
+            i: PoolTokenIndex,
+            j: PoolTokenIndex,
             dx: T::Balance,
             min_dy: T::Balance,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            let zero = Self::get_number(0);
             let one = Self::get_number(1);
 
             // sold_id, tokens_sold, bought_id, tokens_bought
@@ -801,13 +809,12 @@ pub mod pallet {
             origin: OriginFor<T>,
             pool_id: PoolId,
             token_amount: T::Balance,
-            i: u32,
+            i: PoolTokenIndex,
             min_amount: T::Balance,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
             let i = i as usize;
-            let zero = Self::get_number(0);
 
             let n_token_amount =
                 <T::Convert as Convert<T::Balance, T::Number>>::convert(token_amount);
@@ -1138,14 +1145,14 @@ impl<T: Config> Pallet<T> {
 
         let mut c = d;
         let mut s = zero;
-        let mut x = zero;
 
         for k in 0..xp.len() {
-            if k != i {
-                x = xp[k];
-            } else {
+            if k == i {
                 continue;
             }
+
+            let x = xp[k];
+
             s = s.checked_add(&x)?;
             // c = c * d / (x * n_coins)
             c = c.checked_mul(&d)?.checked_div(&x.checked_mul(&n_coins)?)?;
@@ -1158,7 +1165,7 @@ impl<T: Config> Pallet<T> {
         let b = s.checked_add(&d.checked_div(&ann)?)?;
         let mut y = d;
 
-        for k in 0..xp.len() {
+        for _ in 0..xp.len() {
             let y_prev = y;
             // y = (y*y + c) / (2 * y + b - d)
             y = y
@@ -1264,10 +1271,17 @@ pub mod traits {
         fn total_issuance(asset: AssetId) -> Balance;
     }
 
+    /// Generic convertion trait. Unlike `sp_runtime::traits::Convert` it supports cases
+    /// where some values of type `A` can not be represented in type `B`.
     pub trait CheckedConvert<A, B> {
+        /// Make a conversion
         fn convert(a: A) -> Option<B>;
     }
 }
+
+/// Type that represents index type of token in the pool passed from the outside as an extrinsic
+/// argument.
+pub type PoolTokenIndex = u32;
 
 /// Type that represents pool id
 pub type PoolId = u32;
