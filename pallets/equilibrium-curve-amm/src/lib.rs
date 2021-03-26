@@ -101,6 +101,7 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn pools)]
     pub type Pools<T: Config> =
+        //StorageMap<_, Blake2_128Concat, PoolId, PoolInfo<T::AssetId, T::Number, T::Balance>>;
         StorageMap<_, Blake2_128Concat, PoolId, PoolInfo<T::AssetId, T::Number>>;
 
     /// Event type for Equilibrium Curve AMM pallet
@@ -220,6 +221,7 @@ pub mod pallet {
                         let asset =
                             T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
 
+                        //let balances = vec![Self::convert_number_to_balance(Self::get_number(0)); assets.len()];
                         let balances = vec![Self::get_number(0); assets.len()];
 
                         *maybe_pool_info = Some(PoolInfo {
@@ -273,6 +275,7 @@ pub mod pallet {
 
                     let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
 
+                    //let old_balances = pool.balances.iter().cloned().map(Self::convert_balance_to_number).collect::<Vec<_>>();
                     let old_balances = pool.balances.clone();
 
                     let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
@@ -336,10 +339,12 @@ pub mod pallet {
                             .ok_or(Error::<T>::Math)?;
 
                             fees[i] = fee.checked_mul(&difference).ok_or(Error::<T>::Math)?;
-                            // pool.balances[i] = new_balance - (fees[i] * admin_fee)
-                            pool.balances[i] =
+                            // new_pool_balance = new_balance - (fees[i] * admin_fee)
+                            let new_pool_balance = 
                                 (|| new_balance.checked_sub(&fees[i].checked_mul(&admin_fee)?))()
                                     .ok_or(Error::<T>::Math)?;
+                            //pool.balances[i] = Self::convert_number_to_balance(new_pool_balance);
+                            pool.balances[i] = new_pool_balance;
 
                             new_balances[i] = new_balances[i]
                                 .checked_sub(&fees[i])
@@ -899,6 +904,14 @@ impl<T: Config> Pallet<T> {
 
     pub(crate) fn convert_balance_to_number(balance: T::Balance) -> T::Number {
         <T::Convert as Convert<T::Balance, T::Number>>::convert(balance)
+    }
+
+    pub(crate) fn convert_vec_number_to_balance(numbers: Vec<T::Number>) -> Vec<T::Balance> {
+        numbers.into_iter().map(Self::convert_number_to_balance).collect()
+    }
+
+    pub(crate) fn convert_vec_balance_to_number(balances: Vec<T::Balance>) -> Vec<T::Number> {
+        balances.into_iter().map(Self::convert_balance_to_number).collect()
     }
 
     /// Find `ann = amp * n^n` where `amp` - amplification coefficient,
