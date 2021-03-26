@@ -101,8 +101,7 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn pools)]
     pub type Pools<T: Config> =
-        //StorageMap<_, Blake2_128Concat, PoolId, PoolInfo<T::AssetId, T::Number, T::Balance>>;
-        StorageMap<_, Blake2_128Concat, PoolId, PoolInfo<T::AssetId, T::Number>>;
+        StorageMap<_, Blake2_128Concat, PoolId, PoolInfo<T::AssetId, T::Number, T::Balance>>;
 
     /// Event type for Equilibrium Curve AMM pallet
     #[pallet::event]
@@ -221,8 +220,10 @@ pub mod pallet {
                         let asset =
                             T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
 
-                        //let balances = vec![Self::convert_number_to_balance(Self::get_number(0)); assets.len()];
-                        let balances = vec![Self::get_number(0); assets.len()];
+                        let balances = vec![
+                            Self::convert_number_to_balance(Self::get_number(0));
+                            assets.len()
+                        ];
 
                         *maybe_pool_info = Some(PoolInfo {
                             pool_asset: asset,
@@ -275,8 +276,7 @@ pub mod pallet {
 
                     let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
 
-                    //let old_balances = pool.balances.iter().cloned().map(Self::convert_balance_to_number).collect::<Vec<_>>();
-                    let old_balances = pool.balances.clone();
+                    let old_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
 
                     let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
 
@@ -340,11 +340,10 @@ pub mod pallet {
 
                             fees[i] = fee.checked_mul(&difference).ok_or(Error::<T>::Math)?;
                             // new_pool_balance = new_balance - (fees[i] * admin_fee)
-                            let new_pool_balance = 
+                            let new_pool_balance =
                                 (|| new_balance.checked_sub(&fees[i].checked_mul(&admin_fee)?))()
                                     .ok_or(Error::<T>::Math)?;
-                            //pool.balances[i] = Self::convert_number_to_balance(new_pool_balance);
-                            pool.balances[i] = new_pool_balance;
+                            pool.balances[i] = Self::convert_number_to_balance(new_pool_balance);
 
                             new_balances[i] = new_balances[i]
                                 .checked_sub(&fees[i])
@@ -360,7 +359,7 @@ pub mod pallet {
                         })()
                         .ok_or(Error::<T>::Math)?;
                     } else {
-                        pool.balances = new_balances;
+                        pool.balances = Self::convert_vec_number_to_balance(new_balances);
                         mint_amount = d1;
                     }
 
@@ -453,7 +452,7 @@ pub mod pallet {
                     let n_dx = Self::convert_balance_to_number(dx);
                     let n_min_dy = Self::convert_balance_to_number(min_dy);
 
-                    let xp = pool.balances.clone();
+                    let xp = Self::convert_vec_balance_to_number(pool.balances.clone());
 
                     // xp[i] + dx
                     let x = xp[i].checked_add(&n_dx).ok_or(Error::<T>::Math)?;
@@ -475,11 +474,15 @@ pub mod pallet {
                         <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
                     let dy_admin_fee = dy_fee.checked_mul(&admin_fee).ok_or(Error::<T>::Math)?;
 
-                    pool.balances[i] = xp[i].checked_add(&n_dx).ok_or(Error::<T>::Math)?;
+                    pool.balances[i] = Self::convert_number_to_balance(
+                        xp[i].checked_add(&n_dx).ok_or(Error::<T>::Math)?,
+                    );
                     // When rounding errors happen, we undercharge admin fee in favor of LP
                     // pool.balances[j] = xp[j] - n_dy - dy_admin_fee
-                    pool.balances[j] = (|| xp[j].checked_sub(&n_dy)?.checked_sub(&dy_admin_fee))()
-                        .ok_or(Error::<T>::Math)?;
+                    pool.balances[j] = Self::convert_number_to_balance(
+                        (|| xp[j].checked_sub(&n_dy)?.checked_sub(&dy_admin_fee))()
+                            .ok_or(Error::<T>::Math)?,
+                    );
 
                     let dy = Self::convert_number_to_balance(n_dy);
 
@@ -544,7 +547,7 @@ pub mod pallet {
                     let mut n_amounts = vec![zero; n_coins];
 
                     for i in 0..n_coins {
-                        let old_balance = pool.balances[i];
+                        let old_balance = Self::convert_balance_to_number(pool.balances[i]);
                         // value = old_balance * n_amount / token_supply
                         let value = (|| {
                             old_balance
@@ -558,8 +561,9 @@ pub mod pallet {
                         );
 
                         // pool.balances[i] = old_balance - value
-                        pool.balances[i] =
-                            old_balance.checked_sub(&value).ok_or(Error::<T>::Math)?;
+                        pool.balances[i] = Self::convert_number_to_balance(
+                            old_balance.checked_sub(&value).ok_or(Error::<T>::Math)?,
+                        );
 
                         n_amounts[i] = value;
                     }
@@ -645,7 +649,7 @@ pub mod pallet {
 
                     let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
 
-                    let old_balances = pool.balances.clone();
+                    let old_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
 
                     let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
 
@@ -703,9 +707,10 @@ pub mod pallet {
                         fees[i] = fee.checked_mul(&difference).ok_or(Error::<T>::Math)?;
 
                         // pool.balances[i] = new_balance - (fees[i] * admin_fee)
-                        pool.balances[i] =
+                        pool.balances[i] = Self::convert_number_to_balance(
                             (|| new_balance.checked_sub(&fees[i].checked_mul(&admin_fee)?))()
-                                .ok_or(Error::<T>::Math)?;
+                                .ok_or(Error::<T>::Math)?,
+                        );
 
                         new_balances[i] = new_balances[i]
                             .checked_sub(&fees[i])
@@ -825,10 +830,11 @@ pub mod pallet {
                         Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
                     let pool_fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
 
+                    let pool_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
                     let (dy, dy_fee) = Self::calc_withdraw_one_coin(
                         n_token_amount,
                         i,
-                        &pool.balances,
+                        &pool_balances,
                         ann,
                         token_supply,
                         pool_fee,
@@ -844,11 +850,13 @@ pub mod pallet {
                         <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
 
                     // pool.balances[i] = pool.balances[i] - (dy + dy_fee * pool.admin_fee)
-                    pool.balances[i] = (|| {
-                        pool.balances[i]
-                            .checked_sub(&dy.checked_add(&dy_fee.checked_mul(&admin_fee)?)?)
-                    })()
-                    .ok_or(Error::<T>::Math)?;
+                    pool.balances[i] = Self::convert_number_to_balance(
+                        (|| {
+                            pool_balances[i]
+                                .checked_sub(&dy.checked_add(&dy_fee.checked_mul(&admin_fee)?)?)
+                        })()
+                        .ok_or(Error::<T>::Math)?,
+                    );
 
                     let new_token_supply = token_supply
                         .checked_add(&n_token_amount)
@@ -907,11 +915,17 @@ impl<T: Config> Pallet<T> {
     }
 
     pub(crate) fn convert_vec_number_to_balance(numbers: Vec<T::Number>) -> Vec<T::Balance> {
-        numbers.into_iter().map(Self::convert_number_to_balance).collect()
+        numbers
+            .into_iter()
+            .map(Self::convert_number_to_balance)
+            .collect()
     }
 
     pub(crate) fn convert_vec_balance_to_number(balances: Vec<T::Balance>) -> Vec<T::Number> {
-        balances.into_iter().map(Self::convert_balance_to_number).collect()
+        balances
+            .into_iter()
+            .map(Self::convert_balance_to_number)
+            .collect()
     }
 
     /// Find `ann = amp * n^n` where `amp` - amplification coefficient,
@@ -1292,8 +1306,7 @@ pub type PoolId = u32;
 
 /// Storage record type for a pool
 #[derive(Encode, Decode, Clone, Default, PartialEq, Eq, Debug)]
-//pub struct PoolInfo<AssetId, Number, Balance> {
-pub struct PoolInfo<AssetId, Number> {
+pub struct PoolInfo<AssetId, Number, Balance> {
     /// LP multiasset
     pool_asset: AssetId,
     /// List of multiassets supported by the pool
@@ -1305,6 +1318,5 @@ pub struct PoolInfo<AssetId, Number> {
     /// Amount of the admin fee pool charges for the exchange
     admin_fee: Permill,
     /// Current balances excluding admin_fee
-    //balances: Vec<Balance>,
-    balances: Vec<Number>,
+    balances: Vec<Balance>,
 }
