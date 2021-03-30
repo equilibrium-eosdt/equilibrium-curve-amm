@@ -38,7 +38,7 @@ pub use frame_support::{
     construct_runtime,
     dispatch::{DispatchError, DispatchResult},
     parameter_types,
-    traits::{Currency, KeyOwnerProofSystem, OnUnbalanced, Randomness},
+    traits::{Currency, KeyOwnerProofSystem, OnUnbalanced, Randomness, EnsureOrigin},
     weights::{
         constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND},
         IdentityFee, Weight,
@@ -281,12 +281,35 @@ parameter_types! {
     pub const MetadataDepositPerByte: Balance = 1;
 }
 
+pub struct EnsureCurveAmm;
+impl EnsureOrigin<Origin> for EnsureCurveAmm {
+    type Success = AccountId;
+    fn try_origin(o: Origin) -> Result<Self::Success, Origin> {
+        let module_id = CurveAmmModuleId::get();
+        let account_id: AccountId = module_id.into_account();
+
+        let result: Result<RawOrigin<AccountId>, Origin> = o.into();
+
+        result.and_then(|o| match o {
+            RawOrigin::Signed(id) if id == account_id => Ok(id),
+            r => Err(Origin::from(r)),
+        })
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn successful_origin() -> Origin {
+        let module_id = CurveAmmModuleId::get();
+        let account_id: AccountId = module_id.into_account();
+        Origin::from(RawOrigin::Signed(account_id))
+    }
+}
+
 impl pallet_assets::Config for Runtime {
     type Event = Event;
     type Balance = Balance;
     type AssetId = AssetId;
     type Currency = Balances;
-    type ForceOrigin = frame_system::EnsureRoot<AccountId>;
+    type ForceOrigin = EnsureCurveAmm;
     type AssetDepositBase = AssetDepositBase;
     type AssetDepositPerZombie = AssetDepositPerZombie;
     type StringLimit = StringLimit;
