@@ -964,7 +964,7 @@ impl<T: Config> Pallet<T> {
             s = s.checked_add(x)?;
         }
         if s == zero {
-            return None;
+            return Some(zero);
         }
 
         let mut d = s;

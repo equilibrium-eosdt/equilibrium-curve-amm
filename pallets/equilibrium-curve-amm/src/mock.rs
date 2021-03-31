@@ -38,7 +38,7 @@ parameter_types! {
     pub const SS58Prefix: u8 = 42;
 }
 
-type AccountId = u64;
+pub type AccountId = u64;
 
 impl system::Config for Test {
     type BaseCallFilter = ();
@@ -88,7 +88,7 @@ parameter_types! {
 pub type Balance = u128;
 type Number = FixedU128;
 
-type AssetId = i64;
+pub type AssetId = i64;
 
 pub struct FixedU128Convert;
 
@@ -122,19 +122,65 @@ impl Convert<FixedU128, Balance> for FixedU128Convert {
     }
 }
 
-pub struct EmptyAssets;
+use std::collections::HashMap;
+use std::cell::RefCell;
 
-impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for EmptyAssets {
+pub struct Asset {
+    total: Balance,
+    balances: HashMap<AccountId, Balance>,
+}
+
+thread_local! {
+    static ASSETS: RefCell<Vec<Asset>> = RefCell::new(Vec::new());
+}
+
+pub struct TestAssets;
+impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for TestAssets {
     fn create_asset() -> Result<AssetId, DispatchError> {
-        Ok(0)
+        ASSETS.with(|d| -> Result<AssetId, DispatchError> {
+            let mut d = d.borrow_mut();
+            let id = AssetId::try_from(d.len()).map_err(|_| DispatchError::Other(&"Too large id"))?;
+            d.push(Asset{
+                total: 0,
+                balances: HashMap::new(),
+            });
+
+            Ok(id)
+        })
     }
 
     fn mint(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult {
-        Ok(())
+        ASSETS.with(|d| -> DispatchResult {
+            let i = usize::try_from(asset).map_err(|_| DispatchError::Other(&"Index out of range"))?;
+            let mut d = d.borrow_mut();
+            let a = d.get_mut(i).ok_or(DispatchError::Other(&"Index out of range"))?;
+
+            if let Some(x) = a.balances.get_mut(dest) {
+                *x = x.checked_add(amount).ok_or(DispatchError::Other(&"Overflow"))?;
+            } else {
+                a.balances.insert(*dest, amount);
+            }
+
+            a.total = a.total.checked_add(amount).ok_or(DispatchError::Other(&"Overflow"))?;
+
+            Ok(())
+        })
     }
 
     fn burn(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult {
-        Ok(())
+        ASSETS.with(|d| -> DispatchResult {
+            let i = usize::try_from(asset).map_err(|_| DispatchError::Other(&"Index out of range"))?;
+            let mut d = d.borrow_mut();
+            let a = d.get_mut(i).ok_or(DispatchError::Other(&"Index out of range"))?;
+
+            let x = a.balances.get_mut(dest).ok_or(DispatchError::Other(&"Not found"))?;
+
+            *x = x.checked_sub(amount).ok_or(DispatchError::Other(&"Overflow"))?;
+
+            a.total = a.total.checked_sub(amount).ok_or(DispatchError::Other(&"Overflow"))?;
+
+            Ok(())
+        })
     }
 
     fn transfer(
@@ -143,15 +189,26 @@ impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for EmptyAssets {
         dest: &AccountId,
         amount: Balance,
     ) -> DispatchResult {
+        Self::burn(asset, source, amount)?;
+        Self::mint(asset, dest, amount)?;
         Ok(())
     }
 
     fn balance(asset: AssetId, who: &AccountId) -> Balance {
-        0
+        ASSETS.with(|d| -> Option<Balance> {
+            let i = usize::try_from(asset).ok()?;
+            let d = d.borrow();
+            let a = d.get(i)?;
+            a.balances.get(who).map(|x| *x)
+        }).unwrap_or(0)
     }
 
     fn total_issuance(asset: AssetId) -> Balance {
-        0
+        ASSETS.with(|d| -> Option<Balance> {
+            let i = usize::try_from(asset).ok()?;
+            let d = d.borrow();
+            d.get(i).map(|a| a.total)
+        }).unwrap_or(0)
     }
 }
 
@@ -167,7 +224,7 @@ impl curve_amm::Config for Test {
     type Balance = Balance;
     type Currency = Balances;
     type CreationFee = CreationFee;
-    type Assets = EmptyAssets;
+    type Assets = TestAssets;
     type OnUnbalanced = EmptyUnbalanceHandler;
     type ModuleId = CurveAmmModuleId;
 

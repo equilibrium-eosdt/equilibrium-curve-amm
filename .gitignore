@@ -31,5 +31,8 @@ tags
 
 ### VSCode related ###
 
-/.vscode/
+/.vscode
 
+### JetBrains related ###
+
+/.idea
