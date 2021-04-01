@@ -312,7 +312,7 @@ fn init_add_liquidity_test() -> AddLiquidityTestContext {
     assert_ok!(CurveAmm::create_pool(
         Origin::signed(alice),
         vec![coin0, coin1],
-        FixedU128::from(1u128),
+        FixedU128::saturating_from_integer(360),
         Permill::zero(),
         Permill::zero(),
     ));
@@ -411,6 +411,53 @@ fn test_add_with_slippage() {
         ));
 
         let b = TestAssets::balance(pool_token, &bob) / n_coins as u64;
+
+        assert!(
+            (FixedI64::saturating_from_rational(999, 1000).into_inner() as Balance) < b
+                && (b < FixedI64::one().into_inner() as Balance)
+        );
+    });
+}
+
+#[test]
+fn test_add_one_coin() {
+    new_test_ext().execute_with(|| {
+        let AddLiquidityTestContext {
+            bob,
+            swap,
+            pool,
+            pool_token,
+            coins,
+            n_coins,
+            base_amount,
+            initial_amounts,
+            ..
+        } = init_add_liquidity_test();
+
+        let idx = 0;
+
+        let mut amounts = coins.iter().map(|_| 0 as Balance).collect::<Vec<_>>();
+        amounts[idx] = initial_amounts[idx];
+
+        assert_ok!(CurveAmm::add_liquidity(
+            Origin::signed(bob),
+            pool,
+            amounts.clone(),
+            0
+        ));
+
+        for (i, &coin) in coins.iter().enumerate() {
+            assert_eq!(
+                TestAssets::balance(coin, &bob),
+                initial_amounts[i] - amounts[i]
+            );
+            assert_eq!(
+                TestAssets::balance(coin, &swap),
+                initial_amounts[i] + amounts[i]
+            );
+        }
+
+        let b = TestAssets::balance(pool_token, &bob) / base_amount;
 
         assert!(
             (FixedI64::saturating_from_rational(999, 1000).into_inner() as Balance) < b
