@@ -15,7 +15,7 @@ use sp_runtime::{
     ModuleId,
 };
 use sp_runtime::{FixedI64, FixedPointNumber, FixedU128};
-use sp_std::convert::TryFrom;
+use sp_std::convert::{TryFrom, TryInto};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -85,7 +85,7 @@ parameter_types! {
     pub Precision: FixedU128 = FixedU128::saturating_from_rational(1, 1_000_000);
 }
 
-pub type Balance = u128;
+pub type Balance = u64;
 type Number = FixedU128;
 
 pub type AssetId = i64;
@@ -101,7 +101,7 @@ impl Convert<Permill, FixedU128> for FixedU128Convert {
 impl Convert<Balance, FixedU128> for FixedU128Convert {
     fn convert(a: Balance) -> FixedU128 {
         let accuracy = FixedU128::accuracy() / FixedI64::accuracy() as u128;
-        FixedU128::from_inner(a * accuracy)
+        FixedU128::from_inner(a as u128 * accuracy)
     }
 }
 
@@ -120,7 +120,8 @@ impl CheckedConvert<usize, FixedU128> for FixedU128Convert {
 impl Convert<FixedU128, Balance> for FixedU128Convert {
     fn convert(a: FixedU128) -> Balance {
         let accuracy = FixedU128::accuracy() / FixedI64::accuracy() as u128;
-        a.into_inner() / accuracy
+        // NOTE: unwrap is for testing purposes only. Do not use it in production.
+        (a.into_inner() / accuracy).try_into().unwrap()
     }
 }
 

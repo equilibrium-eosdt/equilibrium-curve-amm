@@ -91,7 +91,7 @@ fn create_pool_pool_saved_to_storage() {
                 amplification: FixedU128::from(1u128),
                 fee: Permill::one(),
                 admin_fee: Permill::one(),
-                balances: vec![0u128, 0u128,]
+                balances: vec![0u64, 0u64,]
             })
         );
     });
@@ -169,7 +169,7 @@ fn get_d_empty() {
 
     let result = CurveAmm::get_d(&xp, ann);
 
-    assert_eq!(result, None);
+    assert_eq!(result, Some(FixedU128::zero()));
 }
 
 #[test]
