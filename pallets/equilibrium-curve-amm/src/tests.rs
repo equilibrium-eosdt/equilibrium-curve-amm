@@ -419,49 +419,59 @@ fn test_add_with_slippage() {
     });
 }
 
-#[test]
-fn test_add_one_coin() {
-    new_test_ext().execute_with(|| {
-        let AddLiquidityTestContext {
-            bob,
-            swap,
-            pool,
-            pool_token,
-            coins,
-            n_coins,
-            base_amount,
-            initial_amounts,
-            ..
-        } = init_add_liquidity_test();
+macro_rules! add_one_coin_tests {
+    ($($name:ident: $value:expr,)*) => {
+        $(
+            #[test]
+            fn $name() {
+                new_test_ext().execute_with(|| {
+                    let AddLiquidityTestContext {
+                        bob,
+                        swap,
+                        pool,
+                        pool_token,
+                        coins,
+                        base_amount,
+                        initial_amounts,
+                        ..
+                    } = init_add_liquidity_test();
 
-        let idx = 0;
+                    let idx = $value;
 
-        let mut amounts = coins.iter().map(|_| 0 as Balance).collect::<Vec<_>>();
-        amounts[idx] = initial_amounts[idx];
+                    let mut amounts = coins.iter().map(|_| 0 as Balance).collect::<Vec<_>>();
+                    amounts[idx] = initial_amounts[idx];
 
-        assert_ok!(CurveAmm::add_liquidity(
-            Origin::signed(bob),
-            pool,
-            amounts.clone(),
-            0
-        ));
+                    assert_ok!(CurveAmm::add_liquidity(
+                        Origin::signed(bob),
+                        pool,
+                        amounts.clone(),
+                        0
+                    ));
 
-        for (i, &coin) in coins.iter().enumerate() {
-            assert_eq!(
-                TestAssets::balance(coin, &bob),
-                initial_amounts[i] - amounts[i]
-            );
-            assert_eq!(
-                TestAssets::balance(coin, &swap),
-                initial_amounts[i] + amounts[i]
-            );
-        }
+                    for (i, &coin) in coins.iter().enumerate() {
+                        assert_eq!(
+                            TestAssets::balance(coin, &bob),
+                            initial_amounts[i] - amounts[i]
+                        );
+                        assert_eq!(
+                            TestAssets::balance(coin, &swap),
+                            initial_amounts[i] + amounts[i]
+                        );
+                    }
 
-        let b = TestAssets::balance(pool_token, &bob) / base_amount;
+                    let b = TestAssets::balance(pool_token, &bob) / base_amount;
 
-        assert!(
-            (FixedI64::saturating_from_rational(999, 1000).into_inner() as Balance) < b
-                && (b < FixedI64::one().into_inner() as Balance)
-        );
-    });
+                    assert!(
+                        (FixedI64::saturating_from_rational(999, 1000).into_inner() as Balance) < b
+                            && (b < FixedI64::one().into_inner() as Balance)
+                    );
+                });
+            }
+        )*
+    }
+}
+
+add_one_coin_tests! {
+    test_add_one_coin_0: 0,
+    test_add_one_coin_1: 1,
 }
