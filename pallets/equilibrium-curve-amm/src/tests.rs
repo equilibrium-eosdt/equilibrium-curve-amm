@@ -4,7 +4,7 @@ use core::convert::From;
 use frame_support::assert_err_ignore_postinfo;
 use frame_support::{assert_ok, traits::Currency};
 use sp_runtime::traits::{AccountIdConversion, Saturating};
-use sp_runtime::Permill;
+use sp_runtime::{FixedI64, Permill};
 use sp_runtime::{FixedPointNumber, FixedU128};
 use sp_std::cmp::Ordering;
 
@@ -313,8 +313,8 @@ fn init_add_liquidity_test() -> AddLiquidityTestContext {
         Origin::signed(alice),
         vec![coin0, coin1],
         FixedU128::from(1u128),
-        Permill::one(),
-        Permill::one(),
+        Permill::zero(),
+        Permill::zero(),
     ));
 
     let pool_token = 2;
@@ -379,6 +379,42 @@ fn test_add_liquidity() {
         assert_eq!(
             TestAssets::total_issuance(pool_token),
             2 * (n_coins as Balance) * BALANCE_ONE * base_amount
+        );
+    });
+}
+
+#[test]
+fn test_add_with_slippage() {
+    new_test_ext().execute_with(|| {
+        let AddLiquidityTestContext {
+            bob,
+            pool,
+            pool_token,
+            coins,
+            n_coins,
+            ..
+        } = init_add_liquidity_test();
+
+        let mut amounts = coins.iter().map(|_| FixedI64::one()).collect::<Vec<_>>();
+        amounts[0] = amounts[0].saturating_mul(FixedI64::saturating_from_rational(99, 100));
+        amounts[1] = amounts[1].saturating_mul(FixedI64::saturating_from_rational(101, 100));
+        let amounts = amounts
+            .iter()
+            .map(|x| x.into_inner() as Balance)
+            .collect::<Vec<_>>();
+
+        assert_ok!(CurveAmm::add_liquidity(
+            Origin::signed(bob),
+            pool,
+            amounts,
+            0
+        ));
+
+        let b = TestAssets::balance(pool_token, &bob) / n_coins as u64;
+
+        assert!(
+            (FixedI64::saturating_from_rational(999, 1000).into_inner() as Balance) < b
+                && (b < FixedI64::one().into_inner() as Balance)
         );
     });
 }

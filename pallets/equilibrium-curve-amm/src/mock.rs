@@ -82,7 +82,7 @@ impl pallet_balances::Config for Test {
 parameter_types! {
     pub const CreationFee: Balance = 999;
     pub const CurveAmmModuleId: ModuleId = ModuleId(*b"eq/crvam");
-    pub Precision: FixedU128 = FixedU128::saturating_from_rational(1, 1_000_000);
+    pub Precision: FixedU128 = FixedU128::saturating_from_rational(1, 1_000_000_000);
 }
 
 pub type Balance = u64;
