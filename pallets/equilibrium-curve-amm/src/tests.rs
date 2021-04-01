@@ -259,6 +259,7 @@ fn get_y_j_greater_than_n() {
 
 const ALICE_ID: AccountId = 1;
 const BOB_ID: AccountId = 2;
+const CHARLIE_ID: AccountId = 3;
 
 const TEST_POOL_ID: PoolId = 0;
 
@@ -266,6 +267,7 @@ const BALANCE_ONE: Balance = 1_000_000_000;
 
 struct AddLiquidityTestContext {
     bob: AccountId,
+    charlie: AccountId,
     swap: AccountId,
     pool: PoolId,
     pool_token: AssetId,
@@ -278,6 +280,7 @@ struct AddLiquidityTestContext {
 fn init_add_liquidity_test() -> AddLiquidityTestContext {
     let alice = ALICE_ID;
     let bob = BOB_ID;
+    let charlie = CHARLIE_ID;
     let swap: u64 = CurveAmmModuleId::get().into_account();
 
     let pool = TEST_POOL_ID;
@@ -336,6 +339,7 @@ fn init_add_liquidity_test() -> AddLiquidityTestContext {
 
     AddLiquidityTestContext {
         bob,
+        charlie,
         swap,
         pool,
         pool_token,
@@ -358,6 +362,7 @@ fn test_add_liquidity() {
             n_coins,
             base_amount,
             initial_amounts,
+            ..
         } = init_add_liquidity_test();
 
         assert_ok!(CurveAmm::add_liquidity(
@@ -474,4 +479,26 @@ macro_rules! add_one_coin_tests {
 add_one_coin_tests! {
     test_add_one_coin_0: 0,
     test_add_one_coin_1: 1,
+}
+
+#[test]
+fn test_insufficient_balance() {
+    new_test_ext().execute_with(|| {
+        let AddLiquidityTestContext {
+            charlie,
+            pool,
+            coins,
+            ..
+        } = init_add_liquidity_test();
+
+        let amounts = coins
+            .iter()
+            .map(|_| FixedI64::one().into_inner() as Balance)
+            .collect::<Vec<_>>();
+
+        assert_err_ignore_postinfo!(
+            CurveAmm::add_liquidity(Origin::signed(charlie), pool, amounts, 0),
+            Error::<Test>::InsufficientFunds
+        );
+    });
 }
