@@ -7,7 +7,7 @@ use frame_support::{
 };
 use frame_system as system;
 use sp_core::H256;
-use sp_runtime::traits::{Convert, Saturating};
+use sp_runtime::traits::Convert;
 use sp_runtime::Permill;
 use sp_runtime::{
     testing::Header,

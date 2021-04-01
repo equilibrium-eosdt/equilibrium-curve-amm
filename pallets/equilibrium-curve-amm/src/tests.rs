@@ -2,16 +2,16 @@ use crate::traits::Assets;
 use crate::{mock::*, Error, PoolId, PoolInfo};
 use core::convert::From;
 use frame_support::assert_err_ignore_postinfo;
-use frame_support::{assert_noop, assert_ok, traits::Currency};
+use frame_support::{assert_ok, traits::Currency};
 use sp_runtime::traits::{AccountIdConversion, Saturating};
 use sp_runtime::Permill;
-use sp_runtime::{FixedI64, FixedPointNumber, FixedU128};
+use sp_runtime::{FixedPointNumber, FixedU128};
 use sp_std::cmp::Ordering;
 
 #[test]
 fn create_pool_successful() {
     new_test_ext().execute_with(|| {
-        Balances::deposit_creating(&1, 100000000);
+        let _ = Balances::deposit_creating(&1, 100000000);
         assert_ok!(CurveAmm::create_pool(
             Origin::signed(1),
             vec![0, 1],
@@ -25,7 +25,7 @@ fn create_pool_successful() {
 #[test]
 fn create_pool_assets_must_be_nonempty() {
     new_test_ext().execute_with(|| {
-        Balances::deposit_creating(&1, 100000000);
+        let _ = Balances::deposit_creating(&1, 100000000);
 
         assert_err_ignore_postinfo!(
             CurveAmm::create_pool(
@@ -60,7 +60,7 @@ fn create_pool_balance_must_be_more_than_fee() {
 fn create_pool_correct_pool_count() {
     new_test_ext().execute_with(|| {
         assert_eq!(CurveAmm::pool_count(), 0);
-        Balances::deposit_creating(&1, 100000000);
+        let _ = Balances::deposit_creating(&1, 100000000);
         assert_ok!(CurveAmm::create_pool(
             Origin::signed(1),
             vec![0, 1],
@@ -76,7 +76,7 @@ fn create_pool_correct_pool_count() {
 fn create_pool_pool_saved_to_storage() {
     new_test_ext().execute_with(|| {
         assert_eq!(CurveAmm::pool_count(), 0);
-        Balances::deposit_creating(&1, 100000000);
+        let _ = Balances::deposit_creating(&1, 100000000);
         assert_ok!(CurveAmm::create_pool(
             Origin::signed(1),
             vec![0, 1],
@@ -102,7 +102,7 @@ fn create_pool_pool_saved_to_storage() {
 fn create_pool_fee_withdrawn() {
     new_test_ext().execute_with(|| {
         let initial_balance = 100000000;
-        Balances::deposit_creating(&1, initial_balance);
+        let _ = Balances::deposit_creating(&1, initial_balance);
         assert_ok!(CurveAmm::create_pool(
             Origin::signed(1),
             vec![0, 1],
@@ -119,7 +119,7 @@ fn create_pool_fee_withdrawn() {
 fn create_pool_on_unbalanced_called() {
     new_test_ext().execute_with(|| {
         let initial_balance = 100000000;
-        Balances::deposit_creating(&1, initial_balance);
+        let _ = Balances::deposit_creating(&1, initial_balance);
         assert_ok!(CurveAmm::create_pool(
             Origin::signed(1),
             vec![0, 1],
@@ -257,12 +257,12 @@ fn get_y_j_greater_than_n() {
     assert_eq!(result, None);
 }
 
-const AliceId: AccountId = 1;
-const BobId: AccountId = 2;
+const ALICE_ID: AccountId = 1;
+const BOB_ID: AccountId = 2;
 
-const TestPoolId: PoolId = 0;
+const TEST_POOL_ID: PoolId = 0;
 
-const BalanceOne: Balance = 1_000_000_000;
+const BALANCE_ONE: Balance = 1_000_000_000;
 
 struct AddLiquidityTestContext {
     bob: AccountId,
@@ -276,11 +276,11 @@ struct AddLiquidityTestContext {
 }
 
 fn init_add_liquidity_test() -> AddLiquidityTestContext {
-    let alice = AliceId;
-    let bob = BobId;
+    let alice = ALICE_ID;
+    let bob = BOB_ID;
     let swap: u64 = CurveAmmModuleId::get().into_account();
 
-    let pool = TestPoolId;
+    let pool = TEST_POOL_ID;
 
     let base_eq_amount: Balance = 100_000_000;
 
@@ -298,11 +298,11 @@ fn init_add_liquidity_test() -> AddLiquidityTestContext {
 
     let initial_amounts = coins
         .iter()
-        .map(|_| base_amount * BalanceOne)
+        .map(|_| base_amount * BALANCE_ONE)
         .collect::<Vec<_>>();
 
     // Mint Alice
-    Balances::deposit_creating(&alice, base_eq_amount);
+    let _ = Balances::deposit_creating(&alice, base_eq_amount);
 
     for (&coin, &amount) in coins.iter().zip(initial_amounts.iter()) {
         assert_ok!(TestAssets::mint(coin, &alice, amount));
@@ -328,7 +328,7 @@ fn init_add_liquidity_test() -> AddLiquidityTestContext {
     ));
 
     // mint_bob
-    Balances::deposit_creating(&bob, base_eq_amount);
+    let _ = Balances::deposit_creating(&bob, base_eq_amount);
 
     for (&coin, &amount) in coins.iter().zip(initial_amounts.iter()) {
         assert_ok!(TestAssets::mint(coin, &bob, amount));
@@ -374,11 +374,11 @@ fn test_add_liquidity() {
 
         assert_eq!(
             TestAssets::balance(pool_token, &bob),
-            (n_coins as Balance) * BalanceOne * base_amount
+            (n_coins as Balance) * BALANCE_ONE * base_amount
         );
         assert_eq!(
             TestAssets::total_issuance(pool_token),
-            2 * (n_coins as Balance) * BalanceOne * base_amount
+            2 * (n_coins as Balance) * BALANCE_ONE * base_amount
         );
     });
 }
