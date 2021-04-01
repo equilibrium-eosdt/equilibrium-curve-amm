@@ -4,7 +4,7 @@ use frame_support::assert_err_ignore_postinfo;
 use frame_support::{assert_noop, assert_ok, traits::Currency};
 use sp_runtime::traits::{Saturating, AccountIdConversion};
 use sp_runtime::Permill;
-use sp_runtime::{FixedPointNumber, FixedU128};
+use sp_runtime::{FixedPointNumber, FixedU128, FixedI64};
 use sp_std::cmp::Ordering;
 
 #[test]
@@ -261,6 +261,8 @@ const BobId: AccountId = 2;
 
 const TestPoolId: PoolId = 0;
 
+const BalanceOne: Balance = 1_000_000_000;
+
 use crate::traits::Assets;
 
 #[test]
@@ -286,11 +288,13 @@ fn test_add_liquidity() {
         let coins = [coin0, coin1];
         let n_coins = coins.len();
 
+        let initial_amounts = coins.iter().map(|_| base_amount * BalanceOne).collect::<Vec<_>>();
+
         // Mint Alice
         Balances::deposit_creating(alice, base_eq_amount);
 
-        for &coin in &coins {
-            assert_ok!(TestAssets::mint(coin, alice, base_amount));
+        for (&coin, &amount) in coins.iter().zip(initial_amounts.iter()) {
+            assert_ok!(TestAssets::mint(coin, alice, amount));
         }
 
         // Create pool
@@ -305,27 +309,24 @@ fn test_add_liquidity() {
         let pool_token = 2;
 
         // add_initial_liquidity
-        let amounts = vec![base_amount, base_amount];
-        assert_ok!(CurveAmm::add_liquidity(Origin::signed(*alice), pool, amounts, 0));
+        assert_ok!(CurveAmm::add_liquidity(Origin::signed(*alice), pool, initial_amounts.clone(), 0));
 
         // mint_bob
         Balances::deposit_creating(bob, base_eq_amount);
 
-        for &coin in &coins {
-            assert_ok!(TestAssets::mint(coin, bob, base_amount));
+        for (&coin, &amount) in coins.iter().zip(initial_amounts.iter()) {
+            assert_ok!(TestAssets::mint(coin, bob, amount));
         }
 
         // test_add_liquidity
-        let initial_amounts = coins.iter().map(|_| base_amount).collect::<Vec<_>>();
+        assert_ok!(CurveAmm::add_liquidity(Origin::signed(*bob), pool, initial_amounts.clone(), 0));
 
-        assert_ok!(CurveAmm::add_liquidity(Origin::signed(*bob), pool, initial_amounts, 0));
-
-        for &coin in &coins {
+        for (&coin, &amount) in coins.iter().zip(initial_amounts.iter()) {
             assert_eq!(TestAssets::balance(coin, bob), 0);
-            assert_eq!(TestAssets::balance(coin, swap), 2 * base_amount);
+            assert_eq!(TestAssets::balance(coin, swap), 2 * amount);
         }
 
-        assert_eq!(TestAssets::balance(pool_token, bob), (n_coins as u128) * base_amount);
-        assert_eq!(TestAssets::total_issuance(pool_token), 2 * (n_coins as u128) * base_amount);
+        assert_eq!(TestAssets::balance(pool_token, bob), (n_coins as Balance) * BalanceOne * base_amount);
+        assert_eq!(TestAssets::total_issuance(pool_token), 2 * (n_coins as Balance) * BalanceOne * base_amount);
     });
 }

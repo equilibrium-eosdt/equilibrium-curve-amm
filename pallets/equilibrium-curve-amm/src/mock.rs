@@ -14,7 +14,7 @@ use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
     ModuleId,
 };
-use sp_runtime::{FixedPointNumber, FixedU128};
+use sp_runtime::{FixedPointNumber, FixedU128, FixedI64};
 use sp_std::convert::TryFrom;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -100,7 +100,8 @@ impl Convert<Permill, FixedU128> for FixedU128Convert {
 
 impl Convert<Balance, FixedU128> for FixedU128Convert {
     fn convert(a: Balance) -> FixedU128 {
-        FixedU128::saturating_from_integer(a)
+        let accuracy = FixedU128::accuracy() / FixedI64::accuracy() as u128;
+        FixedU128::from_inner(a * accuracy)
     }
 }
 
@@ -118,7 +119,8 @@ impl CheckedConvert<usize, FixedU128> for FixedU128Convert {
 
 impl Convert<FixedU128, Balance> for FixedU128Convert {
     fn convert(a: FixedU128) -> Balance {
-        a.into_inner() / FixedU128::accuracy()
+        let accuracy = FixedU128::accuracy() / FixedI64::accuracy() as u128;
+        a.into_inner() / accuracy
     }
 }
 
