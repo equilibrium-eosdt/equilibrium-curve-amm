@@ -7,6 +7,13 @@ use sp_runtime::Permill;
 use sp_runtime::{FixedPointNumber, FixedU128};
 use sp_std::cmp::Ordering;
 
+fn last_event() -> Event {
+    frame_system::pallet::Pallet::<Test>::events()
+        .pop()
+        .expect("Event expected")
+        .event
+}
+
 #[test]
 fn create_pool_successful() {
     new_test_ext().execute_with(|| {
@@ -268,6 +275,7 @@ mod curve {
     pub const BALANCE_ONE: Balance = 1_000_000_000;
 
     mod test_add_liquidity {
+        use super::super::last_event;
         use super::*;
         use crate::traits::Assets;
         use crate::{Error, PoolId};
@@ -513,6 +521,101 @@ mod curve {
                     CurveAmm::add_liquidity(Origin::signed(charlie), pool, amounts, 0),
                     Error::<Test>::InsufficientFunds
                 );
+            });
+        }
+
+        #[test]
+        fn test_min_amount_too_high() {
+            new_test_ext().execute_with(|| {
+                let AddLiquidityTestContext {
+                    bob,
+                    pool,
+                    coins,
+                    n_coins,
+                    ..
+                } = init_add_liquidity_test();
+
+                let amounts = coins
+                    .iter()
+                    .map(|_| FixedI64::one().into_inner() as Balance)
+                    .collect::<Vec<_>>();
+
+                let min_amount = (FixedI64::one().into_inner() as Balance) * n_coins as Balance + 1;
+
+                assert_err_ignore_postinfo!(
+                    CurveAmm::add_liquidity(Origin::signed(bob), pool, amounts, min_amount),
+                    Error::<Test>::RequiredAmountNotReached
+                );
+            });
+        }
+
+        #[test]
+        fn test_min_amount_with_slippage() {
+            new_test_ext().execute_with(|| {
+                let AddLiquidityTestContext {
+                    bob,
+                    pool,
+                    coins,
+                    n_coins,
+                    ..
+                } = init_add_liquidity_test();
+
+                let mut amounts = coins.iter().map(|_| FixedI64::one()).collect::<Vec<_>>();
+                amounts[0] = amounts[0].saturating_mul(FixedI64::saturating_from_rational(99, 100));
+                amounts[1] =
+                    amounts[1].saturating_mul(FixedI64::saturating_from_rational(101, 100));
+                let amounts = amounts
+                    .iter()
+                    .map(|x| x.into_inner() as Balance)
+                    .collect::<Vec<_>>();
+
+                assert_err_ignore_postinfo!(
+                    CurveAmm::add_liquidity(
+                        Origin::signed(bob),
+                        pool,
+                        amounts,
+                        FixedI64::saturating_from_integer(n_coins as i64).into_inner() as Balance
+                    ),
+                    Error::<Test>::RequiredAmountNotReached
+                );
+            });
+        }
+
+        #[test]
+        fn test_event() {
+            new_test_ext().execute_with(|| {
+                let AddLiquidityTestContext {
+                    bob,
+                    pool,
+                    pool_token,
+                    initial_amounts,
+                    ..
+                } = init_add_liquidity_test();
+
+                System::set_block_number(2);
+
+                assert_ok!(CurveAmm::add_liquidity(
+                    Origin::signed(bob),
+                    pool,
+                    initial_amounts.clone(),
+                    0
+                ));
+
+                if let Event::curve_amm(crate::pallet::Event::AddLiquidity(
+                    provider,
+                    _,
+                    token_amounts,
+                    _,
+                    _,
+                    token_supply,
+                )) = last_event()
+                {
+                    assert_eq!(provider, bob);
+                    assert_eq!(token_amounts, initial_amounts);
+                    assert_eq!(token_supply, TestAssets::total_issuance(pool_token))
+                } else {
+                    panic!("Unexpected event");
+                }
             });
         }
     }
