@@ -1466,4 +1466,136 @@ mod curve {
             });
         }
     }
+
+    mod test_remove_liquidity_one_coin {
+        use super::super::last_event;
+        use super::*;
+        use crate::traits::Assets;
+        use crate::{Error, PoolId, PoolTokenIndex};
+        use frame_support::assert_err_ignore_postinfo;
+        use frame_support::{assert_ok, traits::Currency};
+        use sp_runtime::traits::AccountIdConversion;
+        use sp_runtime::Permill;
+        use sp_runtime::{FixedPointNumber, FixedU128};
+
+        struct RemoveLiquidityOneCoinTestContext {
+            alice: AccountId,
+            bob: AccountId,
+            swap: AccountId,
+            pool: PoolId,
+            pool_token: AssetId,
+            coins: Vec<AssetId>,
+            n_coins: usize,
+            base_amount: Balance,
+            initial_amounts: Vec<Balance>,
+        }
+
+        fn init_remove_liquidity_one_coin_test() -> RemoveLiquidityOneCoinTestContext {
+            let alice = ALICE_ID;
+            let bob = BOB_ID;
+            let swap: u64 = CurveAmmModuleId::get().into_account();
+
+            let pool = TEST_POOL_ID;
+
+            let base_eq_amount: Balance = 100_000_000;
+
+            let base_amount: Balance = 1_000_000;
+
+            // Create pool tokens
+            let coin0 = TestAssets::create_asset().unwrap();
+            let coin1 = TestAssets::create_asset().unwrap();
+
+            assert_eq!(coin0, 0);
+            assert_eq!(coin1, 1);
+
+            let coins = vec![coin0, coin1];
+            let n_coins = coins.len();
+
+            let initial_amounts = coins
+                .iter()
+                .map(|_| base_amount * BALANCE_ONE)
+                .collect::<Vec<_>>();
+
+            // Mint Alice
+            let _ = Balances::deposit_creating(&alice, base_eq_amount);
+
+            for (&coin, &amount) in coins.iter().zip(initial_amounts.iter()) {
+                assert_ok!(TestAssets::mint(coin, &alice, amount));
+            }
+
+            // Create pool
+            assert_ok!(CurveAmm::create_pool(
+                Origin::signed(alice),
+                vec![coin0, coin1],
+                FixedU128::saturating_from_integer(360),
+                Permill::zero(),
+                Permill::zero(),
+            ));
+
+            let pool_token = 2;
+
+            // add_initial_liquidity
+            assert_ok!(CurveAmm::add_liquidity(
+                Origin::signed(alice),
+                pool,
+                initial_amounts.clone(),
+                0
+            ));
+
+            RemoveLiquidityOneCoinTestContext {
+                alice,
+                bob,
+                swap,
+                pool,
+                pool_token,
+                coins,
+                n_coins,
+                base_amount,
+                initial_amounts,
+            }
+        }
+
+        macro_rules! amount_received_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let RemoveLiquidityOneCoinTestContext {
+                                alice,
+                                swap,
+                                pool,
+                                pool_token,
+                                coins,
+                                n_coins,
+                                base_amount,
+                                initial_amounts,
+                                ..
+                            } = init_remove_liquidity_one_coin_test();
+
+                            let idx: usize = $value;
+
+                            let rate_mod = (100_001, 100_000);
+
+                            assert_ok!(CurveAmm::remove_liquidity_one_coin(
+                                            Origin::signed(alice),
+                                            pool,
+                                            BALANCE_ONE, idx as PoolTokenIndex, 0,
+                                        ));
+
+                            let balance = TestAssets::balance(coins[idx], &alice);
+
+                            assert!(BALANCE_ONE * rate_mod.1 / rate_mod.0 <= balance);
+                            assert!(balance <= BALANCE_ONE);
+                        });
+                    }
+                )*
+            }
+        }
+
+        amount_received_tests! {
+            test_amount_received_0: 0,
+            test_amount_received_1: 1,
+        }
+    }
 }

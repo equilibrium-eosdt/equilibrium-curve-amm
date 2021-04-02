@@ -868,7 +868,8 @@ pub mod pallet {
                     let b_dy = Self::convert_number_to_balance(dy);
 
                     ensure!(
-                        T::Assets::balance(pool.assets[i], &who) >= b_dy,
+                        T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account())
+                            >= b_dy,
                         Error::<T>::InsufficientFunds
                     );
 
@@ -876,8 +877,8 @@ pub mod pallet {
 
                     T::Assets::transfer(
                         pool.assets[i],
-                        &who,
                         &T::ModuleId::get().into_account(),
+                        &who,
                         b_dy,
                     )?;
 
@@ -1186,7 +1187,7 @@ impl<T: Config> Pallet<T> {
         let b = s.checked_add(&d.checked_div(&ann)?)?;
         let mut y = d;
 
-        for _ in 0..xp.len() {
+        for _ in 0..255 {
             let y_prev = y;
             // y = (y*y + c) / (2 * y + b - d)
             y = y
