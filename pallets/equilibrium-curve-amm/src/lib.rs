@@ -15,6 +15,144 @@
 //! Consider ETH, for example. There are multiple bridging solutions who promise to introduce wrapped-ETH and other ERC-20 tokens to Polkadot. There needs to be a way to manage or exchange all of these representations of the same underlying asset inside Polkadot with low cost and low slippage, and that is where the Curve AMM comes into play.
 //!
 //! Curve’s unique stableswap invariant utilizes liquidity much more efficiently compared to all existing DEXes for stablecoins at already several hundred USD TVL (total value locked). Since initial liquidity on Polkadot is hardly going to be very large, proposed efficiency is VERY important for the ecosystem to flourish.
+//!
+//! ## Setup
+//!
+//! Before using Equilibrium Curve Amm Pallet in your code you need to setup it.
+//!
+//! For implementation examples please see `lib.rs` file from `runtime/src` directory and `mock.rs` file
+//! from `pallets/equilibrium-curve-amm/src` directory.
+//!
+//! Please note that all subsequent code snippets are for reference purposes only.
+//! Code for your specific runtime implementation can differ from these examples drastically.
+//!
+//! ### Runtime crate
+//!
+//! First of all you need to define some parameters.
+//!
+//! ```ignore
+//! parameter_types! {
+//!     // Anti ddos fee for pool creation
+//!     pub const CreationFee: Balance = 10_000;
+//!     // Module account
+//!     pub const CurveAmmModuleId: ModuleId = ModuleId(*b"eq/crvam");
+//!     // Value that represents precision used for fixed-point iteration method
+//!     pub Precision: FixedU128 = FixedU128::saturating_from_rational(1, 1_000_000_000);
+//! }
+//! ```
+//!
+//! Define convertion routines. They used by pallet to convert between various external types
+//! and internal `Number` type for math calculations:
+//!
+//! ```ignore
+//! pub struct FixedU128Convert;
+//!
+//! // Convertion from Permill to internal number representation
+//! impl Convert<Permill, FixedU128> for FixedU128Convert {
+//!     fn convert(a: Permill) -> FixedU128 {
+//!         a.into()
+//!     }
+//! }
+//!
+//! // Convertion from Balance to internal number representation
+//! impl Convert<Balance, FixedU128> for FixedU128Convert {
+//!     fn convert(a: Balance) -> FixedU128 {
+//!         FixedU128::saturating_from_integer(a)
+//!     }
+//! }
+//!
+//! // Convertion from byte to internal number representation
+//! impl Convert<u8, FixedU128> for FixedU128Convert {
+//!     fn convert(a: u8) -> FixedU128 {
+//!         FixedU128::saturating_from_integer(a)
+//!     }
+//! }
+//!
+//! // Convertion from usize to internal number represenation
+//! impl equilibrium_curve_amm::traits::CheckedConvert<usize, FixedU128> for FixedU128Convert {
+//!     fn convert(a: usize) -> Option<FixedU128> {
+//!         Some(FixedU128::saturating_from_integer(u128::try_from(a).ok()?))
+//!     }
+//! }
+//!
+//! // Convertion from internal number representation to Balance
+//! impl Convert<FixedU128, Balance> for FixedU128Convert {
+//!     fn convert(a: FixedU128) -> Balance {
+//!         a.into_inner() / FixedU128::accuracy()
+//!     }
+//! }
+//! ```
+//!
+//! Define adapter for asset system used in your runtime. See `FrameAssets` struct from `runtime/src/lib.rs` file for
+//! example implementation that uses `pallet-assets` under the hood.
+//!
+//! ```ignore
+//! pub struct FrameAssets;
+//! impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for FrameAssets {
+//!     // Creates new asset
+//!     fn create_asset() -> Result<AssetId, DispatchError> {
+//!         panic!("Not implemented");
+//!     }
+//!
+//!     // Mint tokens for the specified asset
+//!     fn mint(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult {
+//!         panic!("Not implemented");
+//!     }
+//!
+//!     // Burn tokens for the specified asset
+//!     fn burn(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult {
+//!         panic!("Not implemented");
+//!     }
+//!
+//!     // Transfer tokens for the specified asset
+//!     fn transfer(
+//!         asset: AssetId,
+//!         source: &AccountId,
+//!         dest: &AccountId,
+//!         amount: Balance,
+//!     ) -> DispatchResult {
+//!         panic!("Not implemented");
+//!     }
+//!
+//!     // Checks the balance for the specified asset
+//!     fn balance(asset: AssetId, who: &AccountId) -> Balance {
+//!         panic!("Not implemented");
+//!     }
+//!
+//!     // Returns total issuance of the specified asset
+//!     fn total_issuance(asset: AssetId) -> Balance {
+//!         panic!("Not implemented");
+//!     }
+//! }
+//! ```
+//!
+//! Implement Financial Pallet for your Runtime:
+//!
+//! ```ignore
+//! impl equilibrium_curve_amm::Config for Runtime {
+//!     // The overarching event type.
+//!     type Event = Event;
+//!     // Identificator type of Asset
+//!     type AssetId = AssetId;
+//!     // The balance of an account
+//!     type Balance = Balance;
+//!     // Standart balances pallet for utility token or adapter
+//!     type Currency = pallet_balances::Pallet<Runtime>;
+//!     // Anti ddos fee for pool creation
+//!     type CreationFee = CreationFee;
+//!     // External implementation for required opeartions with assets
+//!     type Assets = FrameAssets;
+//!     type OnUnbalanced = EmptyUnbalanceHandler;
+//!     // Module account
+//!     type ModuleId = CurveAmmModuleId;
+//!     // Number type for underlying calculations
+//!     type Number = Number;
+//!     // Value that represents precision used for fixed-point iteration method
+//!     type Precision = Precision;
+//!     // Convertions between `Number` and various representations
+//!     type Convert = FixedU128Convert;
+//! }
+//! ```
 
 #![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
