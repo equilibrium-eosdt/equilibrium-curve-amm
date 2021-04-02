@@ -21,24 +21,24 @@ use sp_runtime::{
     ApplyExtrinsicResult, ModuleId, MultiSignature,
 };
 use sp_runtime::{FixedPointNumber, FixedU128};
-use sp_std::prelude::*;
 use sp_std::convert::TryFrom;
+use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 
-use sp_runtime::MultiAddress;
-use sp_runtime::traits::AccountIdConversion;
 use frame_system::RawOrigin;
-use sp_runtime::traits::Dispatchable;
 use pallet_assets::Call as AssetsCall;
+use sp_runtime::traits::AccountIdConversion;
+use sp_runtime::traits::Dispatchable;
+use sp_runtime::MultiAddress;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
     construct_runtime,
     dispatch::{DispatchError, DispatchResult},
     parameter_types,
-    traits::{Currency, KeyOwnerProofSystem, OnUnbalanced, Randomness, EnsureOrigin},
+    traits::{Currency, EnsureOrigin, KeyOwnerProofSystem, OnUnbalanced, Randomness},
     weights::{
         constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND},
         IdentityFee, Weight,
@@ -375,14 +375,13 @@ pub struct FrameAssets;
 /// is to guess asset id and hope that it is not in use.
 impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for FrameAssets {
     fn create_asset() -> Result<AssetId, DispatchError> {
-
         fn random_u32_seed() -> u32 {
-                let seed = RandomnessCollectiveFlip::random_seed();
-                let seed_bytes = seed.as_fixed_bytes();
-                let small_seed_bytes = [seed_bytes[0], seed_bytes[1], seed_bytes[2], seed_bytes[3]];
-                let small_seed: u32 = u32::from_le_bytes(small_seed_bytes);
+            let seed = RandomnessCollectiveFlip::random_seed();
+            let seed_bytes = seed.as_fixed_bytes();
+            let small_seed_bytes = [seed_bytes[0], seed_bytes[1], seed_bytes[2], seed_bytes[3]];
+            let small_seed: u32 = u32::from_le_bytes(small_seed_bytes);
 
-                small_seed
+            small_seed
         }
 
         /// See https://en.wikipedia.org/wiki/Linear_congruential_generator
