@@ -619,4 +619,167 @@ mod curve {
             });
         }
     }
+
+    mod test_add_liquidity_initial {
+        use super::*;
+        use crate::traits::Assets;
+        use crate::{Error, PoolId};
+        use frame_support::assert_err_ignore_postinfo;
+        use frame_support::{assert_ok, traits::Currency};
+        use sp_runtime::traits::AccountIdConversion;
+        use sp_runtime::{FixedI64, Permill};
+        use sp_runtime::{FixedPointNumber, FixedU128};
+
+        struct AddLiquidityInitialTestContext {
+            alice: AccountId,
+            swap: AccountId,
+            pool: PoolId,
+            pool_token: AssetId,
+            coins: Vec<AssetId>,
+            n_coins: usize,
+            initial_amounts: Vec<Balance>,
+        }
+
+        fn init_add_liquidity_initial_test() -> AddLiquidityInitialTestContext {
+            let alice = ALICE_ID;
+            let swap: u64 = CurveAmmModuleId::get().into_account();
+
+            let pool = TEST_POOL_ID;
+
+            let base_eq_amount: Balance = 100_000_000;
+
+            let base_amount: Balance = 1_000_000;
+
+            // Create pool tokens
+            let coin0 = TestAssets::create_asset().unwrap();
+            let coin1 = TestAssets::create_asset().unwrap();
+
+            assert_eq!(coin0, 0);
+            assert_eq!(coin1, 1);
+
+            let coins = vec![coin0, coin1];
+            let n_coins = coins.len();
+
+            let initial_amounts = coins
+                .iter()
+                .map(|_| base_amount * BALANCE_ONE)
+                .collect::<Vec<_>>();
+
+            // Mint Alice
+            let _ = Balances::deposit_creating(&alice, base_eq_amount);
+
+            for (&coin, &amount) in coins.iter().zip(initial_amounts.iter()) {
+                assert_ok!(TestAssets::mint(coin, &alice, amount));
+            }
+
+            // Create pool
+            assert_ok!(CurveAmm::create_pool(
+                Origin::signed(alice),
+                vec![coin0, coin1],
+                FixedU128::saturating_from_integer(360),
+                Permill::zero(),
+                Permill::zero(),
+            ));
+
+            let pool_token = 2;
+
+            AddLiquidityInitialTestContext {
+                alice,
+                swap,
+                pool,
+                pool_token,
+                coins,
+                n_coins,
+                initial_amounts,
+            }
+        }
+
+        macro_rules! initial_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let AddLiquidityInitialTestContext {
+                                alice,
+                                swap,
+                                pool,
+                                pool_token,
+                                coins,
+                                n_coins,
+                                initial_amounts,
+                                ..
+                            } = init_add_liquidity_initial_test();
+
+                            let min_amount: Balance = $value;
+
+                            let amounts = coins
+                                .iter()
+                                .map(|_| FixedI64::one().into_inner() as Balance)
+                                .collect::<Vec<_>>();
+
+                            assert_ok!(
+                                CurveAmm::add_liquidity(Origin::signed(alice), pool, amounts.clone(), min_amount)
+                            );
+
+                            for ((&coin, &amount), &initial) in coins.iter().zip(amounts.iter()).zip(initial_amounts.iter()) {
+                                assert_eq!(TestAssets::balance(coin, &alice), initial - amount);
+                                assert_eq!(TestAssets::balance(coin, &swap), amount);
+                            }
+
+                            assert_eq!(
+                                TestAssets::balance(pool_token, &alice),
+                                (n_coins as Balance) * BALANCE_ONE
+                            );
+                            assert_eq!(
+                                TestAssets::total_issuance(pool_token),
+                                (n_coins as Balance) * BALANCE_ONE
+                            );
+                        });
+                    }
+                )*
+            }
+        }
+
+        initial_tests! {
+            test_initial_0: 0,
+            test_initial_2: 2 * BALANCE_ONE,
+        }
+
+        macro_rules! initial_liquidity_missing_coin_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let AddLiquidityInitialTestContext {
+                                alice,
+                                pool,
+                                coins,
+                                ..
+                            } = init_add_liquidity_initial_test();
+
+                            let idx = $value;
+
+                            let mut amounts = coins
+                                .iter()
+                                .map(|_| FixedI64::one().into_inner() as Balance)
+                                .collect::<Vec<_>>();
+                            amounts[idx] = 0;
+
+                            assert_err_ignore_postinfo!(
+                                CurveAmm::add_liquidity(Origin::signed(alice), pool, amounts, 0),
+                                Error::<Test>::WrongAssetAmount
+                            );
+                        });
+                    }
+                )*
+            }
+        }
+
+        initial_liquidity_missing_coin_tests! {
+            test_initial_liquidity_missing_coin_0: 0,
+            test_initial_liquidity_missing_coin_1: 1,
+        }
+    }
 }
