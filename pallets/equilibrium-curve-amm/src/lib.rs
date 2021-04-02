@@ -162,7 +162,7 @@ pub mod pallet {
         DuplicateAssets,
         /// Pool with specified id is not found
         PoolNotFound,
-        /// Error occured while performing math calculations
+        /// Error occurred while performing math calculations
         Math,
         /// Specified asset amount is wrong
         WrongAssetAmount,
@@ -562,7 +562,9 @@ pub mod pallet {
 
                         // pool.balances[i] = old_balance - value
                         pool.balances[i] = Self::convert_number_to_balance(
-                            old_balance.checked_sub(&value).ok_or(Error::<T>::Math)?,
+                            old_balance
+                                .checked_sub(&value)
+                                .ok_or(Error::<T>::InsufficientFunds)?,
                         );
 
                         n_amounts[i] = value;
