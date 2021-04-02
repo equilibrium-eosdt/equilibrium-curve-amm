@@ -1070,4 +1070,400 @@ mod curve {
             });
         }
     }
+
+    mod test_remove_liquidity_imbalance {
+        use super::super::last_event;
+        use super::*;
+        use crate::traits::Assets;
+        use crate::{Error, PoolId};
+        use frame_support::assert_err_ignore_postinfo;
+        use frame_support::{assert_ok, traits::Currency};
+        use sp_runtime::traits::AccountIdConversion;
+        use sp_runtime::Permill;
+        use sp_runtime::{FixedPointNumber, FixedU128};
+
+        struct RemoveLiquidityImbalanceTestContext {
+            alice: AccountId,
+            bob: AccountId,
+            swap: AccountId,
+            pool: PoolId,
+            pool_token: AssetId,
+            coins: Vec<AssetId>,
+            n_coins: usize,
+            base_amount: Balance,
+            initial_amounts: Vec<Balance>,
+        }
+
+        fn init_remove_liquidity_imbalance_test() -> RemoveLiquidityImbalanceTestContext {
+            let alice = ALICE_ID;
+            let bob = BOB_ID;
+            let swap: u64 = CurveAmmModuleId::get().into_account();
+
+            let pool = TEST_POOL_ID;
+
+            let base_eq_amount: Balance = 100_000_000;
+
+            let base_amount: Balance = 1_000_000;
+
+            // Create pool tokens
+            let coin0 = TestAssets::create_asset().unwrap();
+            let coin1 = TestAssets::create_asset().unwrap();
+
+            assert_eq!(coin0, 0);
+            assert_eq!(coin1, 1);
+
+            let coins = vec![coin0, coin1];
+            let n_coins = coins.len();
+
+            let initial_amounts = coins
+                .iter()
+                .map(|_| base_amount * BALANCE_ONE)
+                .collect::<Vec<_>>();
+
+            // Mint Alice
+            let _ = Balances::deposit_creating(&alice, base_eq_amount);
+
+            for (&coin, &amount) in coins.iter().zip(initial_amounts.iter()) {
+                assert_ok!(TestAssets::mint(coin, &alice, amount));
+            }
+
+            // Create pool
+            assert_ok!(CurveAmm::create_pool(
+                Origin::signed(alice),
+                vec![coin0, coin1],
+                FixedU128::saturating_from_integer(360),
+                Permill::zero(),
+                Permill::zero(),
+            ));
+
+            let pool_token = 2;
+
+            // add_initial_liquidity
+            assert_ok!(CurveAmm::add_liquidity(
+                Origin::signed(alice),
+                pool,
+                initial_amounts.clone(),
+                0
+            ));
+
+            RemoveLiquidityImbalanceTestContext {
+                alice,
+                bob,
+                swap,
+                pool,
+                pool_token,
+                coins,
+                n_coins,
+                base_amount,
+                initial_amounts,
+            }
+        }
+
+        macro_rules! remove_balanced_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let RemoveLiquidityImbalanceTestContext {
+                                alice,
+                                swap,
+                                pool,
+                                pool_token,
+                                coins,
+                                n_coins,
+                                base_amount,
+                                initial_amounts,
+                                ..
+                            } = init_remove_liquidity_imbalance_test();
+
+                            let divisor = $value;
+
+                            let amounts = initial_amounts.iter().map(|i| i / divisor).collect::<Vec<_>>();
+                            let max_burn = (n_coins as Balance) * BALANCE_ONE * base_amount / divisor;
+
+                            assert_ok!(CurveAmm::remove_liquidity_imbalance(
+                                Origin::signed(alice),
+                                pool,
+                                amounts.clone(),
+                                max_burn + 1,
+                            ));
+
+                            for ((&coin, &amount), &initial) in coins.iter().zip(amounts.iter()).zip(initial_amounts.iter()) {
+                                assert_eq!(TestAssets::balance(coin, &alice), amount);
+                                assert_eq!(TestAssets::balance(coin, &swap), initial - amount);
+                            }
+
+                            assert!(
+                                i128::abs(TestAssets::balance(pool_token, &alice) as i128 - ((n_coins as Balance) * BALANCE_ONE * base_amount - max_burn) as i128) <= 1
+                            );
+                            assert!(
+                                i128::abs(TestAssets::total_issuance(pool_token) as i128 - ((n_coins as Balance) * BALANCE_ONE * base_amount - max_burn) as i128) <= 1
+                            );
+                        });
+                    }
+                )*
+            }
+        }
+
+        remove_balanced_tests! {
+            test_remove_balanced_2: 2,
+            test_remove_balanced_5: 5,
+            test_remove_balanced_10: 10,
+        }
+
+        macro_rules! remove_some_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let RemoveLiquidityImbalanceTestContext {
+                                alice,
+                                swap,
+                                pool,
+                                pool_token,
+                                coins,
+                                n_coins,
+                                base_amount,
+                                initial_amounts,
+                                ..
+                            } = init_remove_liquidity_imbalance_test();
+
+                            let idx = $value;
+
+                            let mut amounts = initial_amounts.iter().map(|i| i / 2).collect::<Vec<_>>();
+                            amounts[idx] = 0;
+
+                            assert_ok!(CurveAmm::remove_liquidity_imbalance(
+                                            Origin::signed(alice),
+                                            pool,
+                                            amounts.clone(),
+                                            (n_coins as Balance) * BALANCE_ONE * base_amount,
+                                        ));
+
+                            for ((&coin, &amount), &initial) in coins.iter().zip(amounts.iter()).zip(initial_amounts.iter()) {
+                                assert_eq!(TestAssets::balance(coin, &alice), amount);
+                                assert_eq!(TestAssets::balance(coin, &swap), initial - amount);
+                            }
+
+                            let actual_balance = TestAssets::balance(pool_token, &alice);
+                            let actual_total_supply = TestAssets::total_issuance(pool_token);
+                            let ideal_balance = BALANCE_ONE * base_amount * (n_coins as Balance) - BALANCE_ONE * base_amount / 2 * ((n_coins as Balance) - 1);
+
+                            assert_eq!(actual_balance, actual_total_supply);
+                            assert!(ideal_balance * 99 / 100 < actual_balance);
+                            assert!(actual_balance < ideal_balance);
+                        });
+                    }
+                )*
+            }
+        }
+
+        remove_some_tests! {
+            test_remove_some_0: 0,
+            test_remove_some_1: 1,
+        }
+
+        macro_rules! remove_one_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let RemoveLiquidityImbalanceTestContext {
+                                alice,
+                                swap,
+                                pool,
+                                pool_token,
+                                coins,
+                                n_coins,
+                                base_amount,
+                                initial_amounts,
+                                ..
+                            } = init_remove_liquidity_imbalance_test();
+
+                            let idx = $value;
+
+                            let mut amounts = vec![0; n_coins];
+                            amounts[idx] = initial_amounts[idx] / 2;
+
+                            assert_ok!(CurveAmm::remove_liquidity_imbalance(
+                                            Origin::signed(alice),
+                                            pool,
+                                            amounts.clone(),
+                                            (n_coins as Balance) * BALANCE_ONE * base_amount,
+                                        ));
+
+                            for ((&coin, &amount), &initial) in coins.iter().zip(amounts.iter()).zip(initial_amounts.iter()) {
+                                assert_eq!(TestAssets::balance(coin, &alice), amount);
+                                assert_eq!(TestAssets::balance(coin, &swap), initial - amount);
+                            }
+
+                            let actual_balance = TestAssets::balance(pool_token, &alice);
+                            let actual_total_supply = TestAssets::total_issuance(pool_token);
+                            let ideal_balance = BALANCE_ONE * base_amount * (n_coins as Balance) - BALANCE_ONE * base_amount / 2;
+
+                            assert_eq!(actual_balance, actual_total_supply);
+                            assert!(ideal_balance * 99 / 100 < actual_balance);
+                            assert!(actual_balance < ideal_balance);
+                        });
+                    }
+                )*
+            }
+        }
+
+        remove_one_tests! {
+            test_remove_one_0: 0,
+            test_remove_one_1: 1,
+        }
+
+        macro_rules! exceed_max_burn_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let RemoveLiquidityImbalanceTestContext {
+                                alice,
+                                pool,
+                                n_coins,
+                                base_amount,
+                                initial_amounts,
+                                ..
+                            } = init_remove_liquidity_imbalance_test();
+
+                            let divisor = $value;
+
+                            let amounts = initial_amounts.iter().map(|i| i / divisor).collect::<Vec<_>>();
+                            let max_burn = (n_coins as Balance) * BALANCE_ONE * base_amount / divisor;
+
+                            assert_err_ignore_postinfo!(
+                                CurveAmm::remove_liquidity_imbalance(
+                                    Origin::signed(alice),
+                                    pool,
+                                    amounts.clone(),
+                                    max_burn - 1,
+                                ),
+                                Error::<Test>::RequiredAmountNotReached
+                            );
+                        });
+                    }
+                )*
+            }
+        }
+
+        exceed_max_burn_tests! {
+            test_exceed_max_burn_1: 1,
+            test_exceed_max_burn_2: 2,
+            test_exceed_max_burn_10: 10,
+        }
+
+        #[test]
+        fn test_cannot_remove_zero() {
+            new_test_ext().execute_with(|| {
+                let RemoveLiquidityImbalanceTestContext {
+                    alice,
+                    pool,
+                    n_coins,
+                    ..
+                } = init_remove_liquidity_imbalance_test();
+
+                assert_err_ignore_postinfo!(
+                    CurveAmm::remove_liquidity_imbalance(
+                        Origin::signed(alice),
+                        pool,
+                        vec![0; n_coins],
+                        0,
+                    ),
+                    Error::<Test>::WrongAssetAmount
+                );
+            });
+        }
+
+        #[test]
+        fn test_no_total_supply() {
+            new_test_ext().execute_with(|| {
+                let RemoveLiquidityImbalanceTestContext {
+                    alice,
+                    pool,
+                    pool_token,
+                    n_coins,
+                    ..
+                } = init_remove_liquidity_imbalance_test();
+
+                assert_ok!(CurveAmm::remove_liquidity(
+                    Origin::signed(alice),
+                    pool,
+                    TestAssets::total_issuance(pool_token),
+                    vec![0; n_coins],
+                ));
+
+                assert_err_ignore_postinfo!(
+                    CurveAmm::remove_liquidity_imbalance(
+                        Origin::signed(alice),
+                        pool,
+                        vec![0; n_coins],
+                        0,
+                    ),
+                    Error::<Test>::InsufficientFunds
+                );
+            });
+        }
+
+        #[test]
+        fn test_event() {
+            new_test_ext().execute_with(|| {
+                let RemoveLiquidityImbalanceTestContext {
+                    alice,
+                    bob,
+                    pool,
+                    pool_token,
+                    coins,
+                    n_coins,
+                    base_amount,
+                    initial_amounts,
+                    ..
+                } = init_remove_liquidity_imbalance_test();
+
+                let _ = TestAssets::transfer(
+                    pool_token,
+                    &alice,
+                    &bob,
+                    TestAssets::balance(pool_token, &alice),
+                );
+
+                System::set_block_number(2);
+
+                let amounts = initial_amounts.iter().map(|i| i / 5).collect::<Vec<_>>();
+                let max_burn = (n_coins as Balance) * BALANCE_ONE * base_amount;
+
+                assert_ok!(CurveAmm::remove_liquidity_imbalance(
+                    Origin::signed(bob),
+                    pool,
+                    amounts,
+                    max_burn,
+                ));
+
+                if let Event::curve_amm(crate::pallet::Event::RemoveLiquidityImbalance(
+                    provider,
+                    _,
+                    token_amounts,
+                    _,
+                    _,
+                    token_supply,
+                )) = last_event()
+                {
+                    assert_eq!(provider, bob);
+                    assert_eq!(token_supply, TestAssets::total_issuance(pool_token));
+
+                    for (&coin, &amount) in coins.iter().zip(token_amounts.iter()) {
+                        assert_eq!(TestAssets::balance(coin, &bob), amount);
+                    }
+                } else {
+                    panic!("Unexpected event");
+                }
+            });
+        }
+    }
 }

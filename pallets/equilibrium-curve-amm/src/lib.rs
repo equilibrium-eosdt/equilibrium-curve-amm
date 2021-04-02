@@ -693,6 +693,7 @@ pub mod pallet {
                     for i in 0..n_coins {
                         let new_balance = new_balances[i];
 
+                        ensure!(d0 != zero, Error::<T>::InsufficientFunds);
                         // ideal_balance = d1 * old_balances[i] / d0
                         let ideal_balance =
                             (|| d1.checked_mul(&old_balances[i])?.checked_div(&d0))()
@@ -729,7 +730,7 @@ pub mod pallet {
                             .checked_div(&d0)
                     })()
                     .ok_or(Error::<T>::Math)?;
-                    ensure!(token_amount != zero, Error::<T>::Math);
+                    ensure!(token_amount != zero, Error::<T>::WrongAssetAmount);
                     // In case of rounding errors - make it unfavorable for the "attacker"
                     let token_amount = token_amount
                         .checked_add(&T::Precision::get())
