@@ -606,6 +606,7 @@ pub mod pallet {
 
                     let fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
                     let dy_fee = n_dy.checked_mul(&fee).ok_or(Error::<T>::Math)?;
+                    let n_dy = n_dy.checked_sub(&dy_fee).ok_or(Error::<T>::Math)?;
                     ensure!(n_dy >= n_min_dy, Error::<T>::RequiredAmountNotReached);
 
                     let admin_fee =
