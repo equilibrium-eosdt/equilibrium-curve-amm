@@ -166,11 +166,12 @@ mod mock;
 mod tests;
 
 use frame_support::codec::{Decode, Encode};
+use frame_support::dispatch::DispatchError;
 use frame_support::traits::Get;
 use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert};
 use sp_runtime::Permill;
 use sp_std::prelude::*;
-use traits::CheckedConvert;
+use traits::{Assets, CheckedConvert};
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -1401,7 +1402,37 @@ impl<T: Config> Pallet<T> {
         // Without fees
         let dy_0 = xp[i].checked_sub(&new_y)?;
 
-        Some((dy, dy_0))
+        let fee = dy_0.checked_sub(&dy)?;
+
+        Some((dy, fee))
+    }
+
+    pub fn get_withdraw_one_coin(
+        pool_id: PoolId,
+        token_amount: T::Balance,
+        i: PoolTokenIndex,
+    ) -> Result<T::Balance, DispatchError> {
+        let n_token_amount = Self::convert_balance_to_number(token_amount);
+        let i = i as usize;
+        let pool = Self::pools(pool_id).ok_or(Error::<T>::PoolNotFound)?;
+        let pool_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
+        let n_coins = pool.assets.len();
+        let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+        let token_supply =
+            Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
+        let pool_fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
+
+        let (dy, _) = Self::calc_withdraw_one_coin(
+            n_token_amount,
+            i,
+            &pool_balances,
+            ann,
+            token_supply,
+            pool_fee,
+        )
+        .ok_or(Error::<T>::Math)?;
+
+        Ok(Self::convert_number_to_balance(dy))
     }
 }
 

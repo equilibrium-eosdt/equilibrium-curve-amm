@@ -1471,9 +1471,10 @@ mod curve {
         use super::super::last_event;
         use super::*;
         use crate::traits::Assets;
-        use crate::{Error, PoolId, PoolTokenIndex};
+        use crate::{Error, PoolId, PoolInfo, PoolTokenIndex};
         use frame_support::assert_err_ignore_postinfo;
         use frame_support::{assert_ok, traits::Currency};
+        use pallet_balances::Event::BalanceSet;
         use sp_runtime::traits::AccountIdConversion;
         use sp_runtime::Permill;
         use sp_runtime::{FixedPointNumber, FixedU128};
@@ -1596,6 +1597,243 @@ mod curve {
         amount_received_tests! {
             test_amount_received_0: 0,
             test_amount_received_1: 1,
+        }
+
+        macro_rules! lp_token_balance_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let RemoveLiquidityOneCoinTestContext {
+                                alice,
+                                swap,
+                                pool,
+                                pool_token,
+                                coins,
+                                n_coins,
+                                base_amount,
+                                initial_amounts,
+                                ..
+                            } = init_remove_liquidity_one_coin_test();
+
+                            let (idx, divisor) = $value;
+
+                            let amount = TestAssets::balance(pool_token, &alice) / divisor;
+
+                            assert_ok!(CurveAmm::remove_liquidity_one_coin(
+                                Origin::signed(alice),
+                                pool,
+                                amount,
+                                idx as PoolTokenIndex,
+                                0,
+                            ));
+
+                            assert_eq!(
+                                TestAssets::balance(pool_token, &alice),
+                                (n_coins as Balance) * BALANCE_ONE * base_amount - amount
+                            );
+                        });
+                    }
+                )*
+            }
+        }
+
+        lp_token_balance_tests! {
+            test_lp_token_balance_0_1: (0, 1),
+            test_lp_token_balance_0_5: (0, 5),
+            test_lp_token_balance_0_42: (0, 42),
+            test_lp_token_balance_1_1: (1, 1),
+            test_lp_token_balance_1_5: (1, 5),
+            test_lp_token_balance_1_42: (1, 42),
+        }
+
+        macro_rules! expected_vs_actual_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let RemoveLiquidityOneCoinTestContext {
+                                alice,
+                                swap,
+                                pool,
+                                pool_token,
+                                coins,
+                                n_coins,
+                                base_amount,
+                                initial_amounts,
+                                ..
+                            } = init_remove_liquidity_one_coin_test();
+
+                            let idx = $value;
+
+                            let amount = TestAssets::balance(pool_token, &alice) / 10;
+
+                            let expected = crate::Pallet::<Test>::get_withdraw_one_coin(pool, amount, idx as PoolTokenIndex).unwrap();
+
+                            assert_ok!(CurveAmm::remove_liquidity_one_coin(
+                                            Origin::signed(alice),
+                                            pool,
+                                            amount,
+                                            idx as PoolTokenIndex,
+                                            0,
+                                        ));
+
+                            assert_eq!(
+                                TestAssets::balance(coins[idx], &alice),
+                                expected
+                            );
+                        });
+                    }
+                )*
+            }
+        }
+
+        expected_vs_actual_tests! {
+            test_expected_vs_actual_0: 0,
+            test_expected_vs_actual_1: 1,
+        }
+
+        macro_rules! below_min_amount_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let RemoveLiquidityOneCoinTestContext {
+                                alice,
+                                pool,
+                                pool_token,
+                                ..
+                            } = init_remove_liquidity_one_coin_test();
+
+                            let idx = $value;
+
+                            let amount = TestAssets::balance(pool_token, &alice);
+                            let expected = crate::Pallet::<Test>::get_withdraw_one_coin(pool, amount, idx as PoolTokenIndex).unwrap();
+
+                            assert_err_ignore_postinfo!(
+                                CurveAmm::remove_liquidity_one_coin(Origin::signed(alice), pool, amount, idx, expected + 1),
+                                Error::<Test>::RequiredAmountNotReached
+                            );
+                        });
+                    }
+                )*
+            }
+        }
+
+        below_min_amount_tests! {
+            test_below_min_amount_0: 0,
+            test_below_min_amount_1: 1,
+        }
+
+        macro_rules! amount_exceeds_balance_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let RemoveLiquidityOneCoinTestContext {
+                                bob,
+                                pool,
+                                pool_token,
+                                ..
+                            } = init_remove_liquidity_one_coin_test();
+
+                            let idx = $value;
+
+                            assert_err_ignore_postinfo!(
+                                            CurveAmm::remove_liquidity_one_coin(Origin::signed(bob), pool, 1, idx, 0),
+                                            Error::<Test>::RequiredAmountNotReached
+                                        );
+                        });
+                    }
+                )*
+            }
+        }
+
+        amount_exceeds_balance_tests! {
+            test_amount_exceeds_balance_0: 0,
+            test_amount_exceeds_balance_1: 1,
+        }
+
+        #[test]
+        fn test_above_n_coins() {
+            new_test_ext().execute_with(|| {
+                let RemoveLiquidityOneCoinTestContext {
+                    alice,
+                    pool,
+                    n_coins,
+                    ..
+                } = init_remove_liquidity_one_coin_test();
+
+                assert_err_ignore_postinfo!(
+                    CurveAmm::remove_liquidity_one_coin(
+                        Origin::signed(alice),
+                        pool,
+                        1,
+                        n_coins as PoolTokenIndex,
+                        0
+                    ),
+                    Error::<Test>::Math
+                );
+            });
+        }
+
+        macro_rules! event_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let RemoveLiquidityOneCoinTestContext {
+                                alice,
+                                bob,
+                                pool,
+                                pool_token,
+                                coins,
+                                n_coins,
+                                ..
+                            } = init_remove_liquidity_one_coin_test();
+
+                            let idx = $value;
+
+                            TestAssets::transfer(pool_token, &alice, &bob, BALANCE_ONE);
+
+                            System::set_block_number(2);
+
+                            assert_ok!(CurveAmm::remove_liquidity_one_coin(
+                                Origin::signed(bob),
+                                pool,
+                                BALANCE_ONE,
+                                idx as PoolTokenIndex,
+                                0
+                            ));
+
+                            if let Event::curve_amm(crate::pallet::Event::RemoveLiquidityOne(
+                                provider,
+                                _,
+                                token_amount,
+                                coin_amount,
+                                token_supply,
+                            )) = last_event()
+                            {
+                                assert_eq!(provider, bob);
+                                assert_eq!(token_amount, BALANCE_ONE);
+                                assert_eq!(coin_amount, TestAssets::balance(coins[idx], &bob));
+                            } else {
+                                panic!("Unexpected event");
+                            }
+                        });
+                    }
+                )*
+            }
+        }
+
+        event_tests! {
+            test_event_0: 0,
+            test_event_1: 1,
         }
     }
 }
