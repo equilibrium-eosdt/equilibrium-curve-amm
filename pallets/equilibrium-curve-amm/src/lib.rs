@@ -157,8 +157,6 @@
 #![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
-extern crate sp_runtime;
-
 pub use pallet::*;
 
 #[cfg(test)]
@@ -169,6 +167,7 @@ mod tests;
 
 use frame_support::codec::{Decode, Encode};
 use frame_support::dispatch::DispatchError;
+use frame_support::ensure;
 use frame_support::traits::Get;
 use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert};
 use sp_runtime::Permill;
@@ -1435,6 +1434,43 @@ impl<T: Config> Pallet<T> {
         .ok_or(Error::<T>::Math)?;
 
         Ok(Self::convert_number_to_balance(dy))
+    }
+
+    pub fn get_dy(
+        pool_id: PoolId,
+        i: PoolTokenIndex,
+        j: PoolTokenIndex,
+        dx: T::Balance,
+    ) -> Result<T::Balance, DispatchError> {
+        let i = i as usize;
+        let j = j as usize;
+
+        let pool = Self::pools(pool_id).ok_or(Error::<T>::PoolNotFound)?;
+
+        let xp = Self::convert_vec_balance_to_number(pool.balances);
+
+        ensure!(i < xp.len() && j < xp.len(), Error::<T>::Math);
+
+        let x = xp[i]
+            .checked_add(&Self::convert_balance_to_number(dx))
+            .ok_or(Error::<T>::Math)?;
+
+        let n_coins = pool.assets.len();
+        let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+        let y = Self::get_y(i, j, x, &xp, ann).ok_or(Error::<T>::Math)?;
+
+        let dy = (|| {
+            let prec = T::Precision::get();
+
+            xp[j].checked_sub(&y)?.checked_sub(&prec)
+        })()
+        .ok_or(Error::<T>::Math)?;
+
+        let fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
+
+        let dy = Self::convert_number_to_balance(dy.checked_sub(&fee).ok_or(Error::<T>::Math)?);
+
+        Ok(dy)
     }
 }
 

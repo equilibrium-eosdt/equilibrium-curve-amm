@@ -1664,13 +1664,10 @@ mod curve {
     }
 
     mod test_exchange {
-        use super::super::last_event;
         use super::*;
         use crate::traits::Assets;
-        use crate::{Error, PoolTokenIndex};
-        use frame_support::assert_err_ignore_postinfo;
+        use crate::PoolTokenIndex;
         use frame_support::assert_ok;
-        use sp_runtime::traits::Saturating;
         use sp_runtime::FixedI64;
         use sp_runtime::FixedPointNumber;
         use sp_std::cmp::max;
@@ -1740,8 +1737,8 @@ mod curve {
                             )
                                 - fee.into();
 
-                            assert!(left_bound < received / 10.into());
-                            assert!(received / 10.into() < FixedI64::one() - fee.into());
+                            assert!(left_bound < received);
+                            assert!(received < FixedI64::one() - fee.into());
 
                             let expected_admin_fee = FixedI64::one() * fee.into() * admin_fee.into();
                             let admin_fees = get_admin_balances(swap, &coins);
@@ -1787,6 +1784,54 @@ mod curve {
             test_exchange_17: (1, 0, 1337, 1337),
             test_exchange_18: (1, 0, 1337, 5000),
             test_exchange_19: (1, 0, 5000, 5000),
+        }
+
+        macro_rules! min_dy_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let (sending, receiving): (usize, usize) = $value;
+
+                            let AddInitialLiquidityContext {
+                                bob,
+                                pool,
+                                coins,
+                                ..
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
+
+                            let amount = BALANCE_ONE;
+                            let _ = TestAssets::mint(coins[sending], &bob, amount);
+
+                            let min_dy = crate::Pallet::<Test>::get_dy(
+                                pool,
+                                sending as PoolTokenIndex,
+                                receiving as PoolTokenIndex,
+                                amount,
+                            ).unwrap();
+
+                            assert_ok!(CurveAmm::exchange(
+                                Origin::signed(bob),
+                                pool,
+                                sending as PoolTokenIndex,
+                                receiving as PoolTokenIndex,
+                                amount,
+                                min_dy - 1,
+                            ));
+
+                            let received = TestAssets::balance(coins[receiving], &bob);
+
+                            assert!(if received > min_dy {received - min_dy} else {min_dy - received} <= 1);
+                        });
+                    }
+                )*
+            }
+        }
+
+        min_dy_tests! {
+            test_min_dy_0_1: (0, 1),
+            test_min_dy_1_0: (1, 0),
         }
     }
 }
