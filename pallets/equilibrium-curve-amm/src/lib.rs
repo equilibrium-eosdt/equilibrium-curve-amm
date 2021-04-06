@@ -157,6 +157,8 @@
 #![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+extern crate sp_runtime;
+
 pub use pallet::*;
 
 #[cfg(test)]
@@ -578,7 +580,7 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
-            let one = Self::get_number(1);
+            let prec = T::Precision::get();
 
             // sold_id, tokens_sold, bought_id, tokens_bought
             let (provider, pool_id, dy) =
@@ -603,7 +605,7 @@ pub mod pallet {
                     // -1 just in case there were some rounding errors
                     // dy = xp[j] - y - 1
                     let n_dy =
-                        (|| xp[j].checked_sub(&y)?.checked_sub(&one))().ok_or(Error::<T>::Math)?;
+                        (|| xp[j].checked_sub(&y)?.checked_sub(&prec))().ok_or(Error::<T>::Math)?;
 
                     let fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
                     let dy_fee = n_dy.checked_mul(&fee).ok_or(Error::<T>::Math)?;

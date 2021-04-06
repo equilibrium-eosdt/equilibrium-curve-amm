@@ -440,7 +440,7 @@ mod curve {
         initial_amounts: Vec<Balance>,
     }
 
-    fn init_add_initial_liquidity() -> AddInitialLiquidityContext {
+    fn init_add_initial_liquidity(fee: Permill, admin_fee: Permill) -> AddInitialLiquidityContext {
         let alice = ALICE_ID;
         let bob = BOB_ID;
         let swap: u64 = CurveAmmModuleId::get().into_account();
@@ -478,8 +478,8 @@ mod curve {
             Origin::signed(alice),
             vec![coin0, coin1],
             FixedU128::saturating_from_integer(360),
-            Permill::zero(),
-            Permill::zero(),
+            fee,
+            admin_fee,
         ));
 
         let pool_token = 2;
@@ -888,7 +888,7 @@ mod curve {
                                 base_amount,
                                 initial_amounts,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let min_amount = $value;
 
@@ -936,7 +936,7 @@ mod curve {
                     base_amount,
                     initial_amounts,
                     ..
-                } = init_add_initial_liquidity();
+                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                 let withdraw_amount = initial_amounts.iter().sum::<Balance>() / 2;
 
@@ -977,7 +977,7 @@ mod curve {
                                 base_amount,
                                 initial_amounts,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let idx = $value;
 
@@ -1013,7 +1013,7 @@ mod curve {
                     n_coins,
                     base_amount,
                     ..
-                } = init_add_initial_liquidity();
+                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                 assert_err_ignore_postinfo!(
                     CurveAmm::remove_liquidity(
@@ -1038,7 +1038,7 @@ mod curve {
                     coins,
                     n_coins,
                     ..
-                } = init_add_initial_liquidity();
+                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                 let _ = TestAssets::transfer(pool_token, &alice, &bob, BALANCE_ONE);
 
@@ -1096,7 +1096,7 @@ mod curve {
                                 base_amount,
                                 initial_amounts,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let divisor = $value;
 
@@ -1149,7 +1149,7 @@ mod curve {
                                 base_amount,
                                 initial_amounts,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let idx = $value;
 
@@ -1202,7 +1202,7 @@ mod curve {
                                 base_amount,
                                 initial_amounts,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let idx = $value;
 
@@ -1252,7 +1252,7 @@ mod curve {
                                 base_amount,
                                 initial_amounts,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let divisor = $value;
 
@@ -1288,7 +1288,7 @@ mod curve {
                     pool,
                     n_coins,
                     ..
-                } = init_add_initial_liquidity();
+                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                 assert_err_ignore_postinfo!(
                     CurveAmm::remove_liquidity_imbalance(
@@ -1311,7 +1311,7 @@ mod curve {
                     pool_token,
                     n_coins,
                     ..
-                } = init_add_initial_liquidity();
+                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                 assert_ok!(CurveAmm::remove_liquidity(
                     Origin::signed(alice),
@@ -1345,7 +1345,7 @@ mod curve {
                     base_amount,
                     initial_amounts,
                     ..
-                } = init_add_initial_liquidity();
+                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                 let _ = TestAssets::transfer(
                     pool_token,
@@ -1407,7 +1407,7 @@ mod curve {
                                 pool,
                                 coins,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let idx: usize = $value;
 
@@ -1447,7 +1447,7 @@ mod curve {
                                 n_coins,
                                 base_amount,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let (idx, divisor) = $value;
 
@@ -1492,7 +1492,7 @@ mod curve {
                                 pool_token,
                                 coins,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let idx = $value;
 
@@ -1534,7 +1534,7 @@ mod curve {
                                 pool,
                                 pool_token,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let idx = $value;
 
@@ -1566,7 +1566,7 @@ mod curve {
                                 bob,
                                 pool,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let idx = $value;
 
@@ -1593,7 +1593,7 @@ mod curve {
                     pool,
                     n_coins,
                     ..
-                } = init_add_initial_liquidity();
+                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                 assert_err_ignore_postinfo!(
                     CurveAmm::remove_liquidity_one_coin(
@@ -1621,7 +1621,7 @@ mod curve {
                                 pool_token,
                                 coins,
                                 ..
-                            } = init_add_initial_liquidity();
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                             let idx = $value;
 
@@ -1660,6 +1660,133 @@ mod curve {
         event_tests! {
             test_event_0: 0,
             test_event_1: 1,
+        }
+    }
+
+    mod test_exchange {
+        use super::super::last_event;
+        use super::*;
+        use crate::traits::Assets;
+        use crate::{Error, PoolTokenIndex};
+        use frame_support::assert_err_ignore_postinfo;
+        use frame_support::assert_ok;
+        use sp_runtime::traits::Saturating;
+        use sp_runtime::FixedI64;
+        use sp_runtime::FixedPointNumber;
+        use sp_std::cmp::max;
+        use sp_std::convert::TryFrom;
+
+        fn get_admin_balances(swap: AccountId, coins: &[AssetId]) -> Vec<Balance> {
+            let balances = CurveAmm::pools(0).unwrap().balances;
+            coins
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(i, coin)| TestAssets::balance(coin, &swap) - balances[i])
+                .collect()
+        }
+
+        fn approx(actual: FixedI64, expected: FixedI64, rel: FixedI64) -> bool {
+            let delta = if expected > actual {
+                expected - actual
+            } else {
+                actual - expected
+            };
+
+            delta / expected <= rel
+        }
+
+        macro_rules! exchange_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            const FEE_Q: u64 = 10_000;
+
+                            let (sending, receiving, fee, admin_fee): (usize, usize, u64, u64) = $value;
+                            let fee = Permill::from_rational_approximation(fee, FEE_Q);
+                            let admin_fee = Permill::from_rational_approximation(admin_fee, FEE_Q);
+
+                            let AddInitialLiquidityContext {
+                                bob,
+                                swap,
+                                pool,
+                                coins,
+                                ..
+                            } = init_add_initial_liquidity(fee, admin_fee);
+
+                            let amount = BALANCE_ONE;
+                            let _ = TestAssets::mint(coins[sending], &bob, amount);
+
+                            assert_ok!(CurveAmm::exchange(
+                                            Origin::signed(bob),
+                                            pool,
+                                            sending as PoolTokenIndex,
+                                            receiving as PoolTokenIndex,
+                                            amount,
+                                            0
+                                        ));
+
+                            assert_eq!(TestAssets::balance(coins[sending], &bob), 0);
+
+                            let received = TestAssets::balance(coins[receiving], &bob);
+                            let received = FixedI64::from_inner(i64::try_from(received).unwrap());
+
+                            let left_bound = FixedI64::one()
+                                - max(
+                                FixedI64::saturating_from_rational(1, 10_000),
+                                FixedI64::one() / received,
+                            )
+                                - fee.into();
+
+                            assert!(left_bound < received / 10.into());
+                            assert!(received / 10.into() < FixedI64::one() - fee.into());
+
+                            let expected_admin_fee = FixedI64::one() * fee.into() * admin_fee.into();
+                            let admin_fees = get_admin_balances(swap, &coins);
+
+                            if expected_admin_fee >= FixedI64::from_inner(1) {
+                                assert!(approx(
+                                    expected_admin_fee
+                                        / FixedI64::from_inner(i64::try_from(admin_fees[receiving]).unwrap()),
+                                    FixedI64::one(),
+                                    max(
+                                        FixedI64::saturating_from_rational(1, 1000),
+                                        FixedI64::one()
+                                            / (expected_admin_fee - FixedI64::saturating_from_rational(11, 10))
+                                    )
+                                ))
+                            } else {
+                                assert!(admin_fees[receiving] <= 1);
+                            }
+                        });
+                    }
+                )*
+            }
+        }
+
+        exchange_tests! {
+            test_exchange_0: (0, 1, 0, 0),
+            test_exchange_1: (0, 1, 0, 400),
+            test_exchange_2: (0, 1, 0, 1337),
+            test_exchange_3: (0, 1, 0, 5000),
+            test_exchange_4: (0, 1, 400, 400),
+            test_exchange_5: (0, 1, 400, 1337),
+            test_exchange_6: (0, 1, 400, 5000),
+            test_exchange_7: (0, 1, 1337, 1337),
+            test_exchange_8: (0, 1, 1337, 5000),
+            test_exchange_9: (0, 1, 5000, 5000),
+            test_exchange_10: (1, 0, 0, 0),
+            test_exchange_11: (1, 0, 0, 400),
+            test_exchange_12: (1, 0, 0, 1337),
+            test_exchange_13: (1, 0, 0, 5000),
+            test_exchange_14: (1, 0, 400, 400),
+            test_exchange_15: (1, 0, 400, 1337),
+            test_exchange_16: (1, 0, 400, 5000),
+            test_exchange_17: (1, 0, 1337, 1337),
+            test_exchange_18: (1, 0, 1337, 5000),
+            test_exchange_19: (1, 0, 5000, 5000),
         }
     }
 }
