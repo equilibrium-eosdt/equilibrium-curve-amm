@@ -310,6 +310,8 @@ pub mod pallet {
         RequiredAmountNotReached,
         /// Source does not have required amount of coins to complete operation
         InsufficientFunds,
+        /// Specified index is out of range
+        IndexOutOfRange,
     }
 
     #[pallet::hooks]
@@ -589,6 +591,10 @@ pub mod pallet {
                     let i = i as usize;
                     let j = j as usize;
 
+                    let n_coins = pool.assets.len();
+
+                    ensure!(i < n_coins && j < n_coins, Error::<T>::IndexOutOfRange);
+
                     let n_dx = Self::convert_balance_to_number(dx);
                     let n_min_dy = Self::convert_balance_to_number(min_dy);
 
@@ -597,7 +603,6 @@ pub mod pallet {
                     // xp[i] + dx
                     let x = xp[i].checked_add(&n_dx).ok_or(Error::<T>::Math)?;
 
-                    let n_coins = pool.assets.len();
                     let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
                     let y = Self::get_y(i, j, x, &xp, ann).ok_or(Error::<T>::Math)?;
 
@@ -626,6 +631,17 @@ pub mod pallet {
                     );
 
                     let dy = Self::convert_number_to_balance(n_dy);
+
+                    ensure!(
+                        T::Assets::balance(pool.assets[i], &who) >= dx,
+                        Error::<T>::InsufficientFunds
+                    );
+
+                    ensure!(
+                        T::Assets::balance(pool.assets[j], &T::ModuleId::get().into_account())
+                            >= dy,
+                        Error::<T>::InsufficientFunds
+                    );
 
                     T::Assets::transfer(
                         pool.assets[i],
@@ -1449,7 +1465,7 @@ impl<T: Config> Pallet<T> {
 
         let xp = Self::convert_vec_balance_to_number(pool.balances);
 
-        ensure!(i < xp.len() && j < xp.len(), Error::<T>::Math);
+        ensure!(i < xp.len() && j < xp.len(), Error::<T>::IndexOutOfRange);
 
         let x = xp[i]
             .checked_add(&Self::convert_balance_to_number(dx))

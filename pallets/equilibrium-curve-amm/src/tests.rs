@@ -1834,4 +1834,202 @@ mod curve {
             test_min_dy_1_0: (1, 0),
         }
     }
+
+    mod test_exchange_reverts {
+        use super::*;
+        use crate::traits::Assets;
+        use crate::Error;
+        use crate::PoolTokenIndex;
+        use frame_support::assert_err_ignore_postinfo;
+
+        macro_rules! insufficient_balance_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let (sending, receiving,): (usize, usize) = $value;
+
+                            let AddInitialLiquidityContext {
+                                bob,
+                                pool,
+                                coins,
+                                ..
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
+
+                            let amount = BALANCE_ONE;
+                            let _ = TestAssets::mint(coins[sending], &bob, amount);
+
+                            assert_err_ignore_postinfo!(CurveAmm::exchange(
+                                Origin::signed(bob),
+                                pool,
+                                sending as PoolTokenIndex,
+                                receiving as PoolTokenIndex,
+                                amount + 1,
+                                0
+                            ),
+                            Error::<Test>::InsufficientFunds
+                            );
+                        });
+                    }
+                )*
+            }
+        }
+
+        insufficient_balance_tests! {
+            test_insufficient_balance_0_1: (0, 1),
+            test_insufficient_balance_1_0: (1, 0),
+        }
+
+        macro_rules! min_dy_too_high_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let (sending, receiving): (usize, usize) = $value;
+
+                            let AddInitialLiquidityContext {
+                                bob,
+                                pool,
+                                coins,
+                                ..
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
+
+                            let amount = BALANCE_ONE;
+                            let _ = TestAssets::mint(coins[sending], &bob, amount);
+
+                            let min_dy = crate::Pallet::<Test>::get_dy(
+                                pool,
+                                sending as PoolTokenIndex,
+                                receiving as PoolTokenIndex,
+                                amount,
+                            ).unwrap();
+
+                            assert_err_ignore_postinfo!(CurveAmm::exchange(
+                                Origin::signed(bob),
+                                pool,
+                                sending as PoolTokenIndex,
+                                receiving as PoolTokenIndex,
+                                amount,
+                                min_dy + 2
+                            ),
+                            Error::<Test>::RequiredAmountNotReached
+                            );
+                        });
+                    }
+                )*
+            }
+        }
+
+        min_dy_too_high_tests! {
+            test_min_dy_too_high_0_1: (0, 1),
+            test_min_dy_too_high_1_0: (1, 0),
+        }
+
+        macro_rules! same_coin_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let idx = $value;
+
+                            let AddInitialLiquidityContext {
+                                bob,
+                                pool,
+                                ..
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
+
+                            assert_err_ignore_postinfo!(CurveAmm::exchange(
+                                            Origin::signed(bob),
+                                            pool,
+                                            idx as PoolTokenIndex,
+                                            idx as PoolTokenIndex,
+                                            0,
+                                            0
+                                        ),
+                                        Error::<Test>::Math
+                                        );
+                        });
+                    }
+                )*
+            }
+        }
+
+        same_coin_tests! {
+            test_same_coin_0: 0,
+            test_same_coin_1: 1,
+        }
+
+        macro_rules! i_above_n_coins_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let idx = $value;
+
+                            let AddInitialLiquidityContext {
+                                bob,
+                                pool,
+                                ..
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
+
+                            assert_err_ignore_postinfo!(CurveAmm::exchange(
+                                            Origin::signed(bob),
+                                            pool,
+                                            idx as PoolTokenIndex,
+                                            0,
+                                            0,
+                                            0
+                                        ),
+                                        Error::<Test>::IndexOutOfRange
+                                        );
+                        });
+                    }
+                )*
+            }
+        }
+
+        i_above_n_coins_tests! {
+            test_i_above_n_coins_0: 9,
+            test_i_above_n_coins_1: Balance::max_value(),
+        }
+
+        macro_rules! j_above_n_coins_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let idx = $value;
+
+                            let AddInitialLiquidityContext {
+                                bob,
+                                pool,
+                                ..
+                            } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
+
+                            assert_err_ignore_postinfo!(CurveAmm::exchange(
+                                            Origin::signed(bob),
+                                            pool,
+                                            0,
+                                            idx as PoolTokenIndex,
+                                            0,
+                                            0
+                                        ),
+                                        Error::<Test>::IndexOutOfRange
+                                        );
+                        });
+                    }
+                )*
+            }
+        }
+
+        j_above_n_coins_tests! {
+            test_j_above_n_coins_0: 9,
+            test_j_above_n_coins_1: Balance::max_value(),
+        }
+    }
 }
