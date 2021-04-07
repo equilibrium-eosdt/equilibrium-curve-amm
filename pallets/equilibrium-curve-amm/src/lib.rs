@@ -157,6 +157,8 @@
 #![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+extern crate sp_runtime;
+
 pub use pallet::*;
 
 #[cfg(test)]
@@ -1424,6 +1426,7 @@ impl<T: Config> Pallet<T> {
         Some((dy, fee))
     }
 
+    /// Calculates the amount received when withdrawing a single coin.
     pub fn get_withdraw_one_coin(
         pool_id: PoolId,
         token_amount: T::Balance,
@@ -1452,6 +1455,7 @@ impl<T: Config> Pallet<T> {
         Ok(Self::convert_number_to_balance(dy))
     }
 
+    /// Calculates exchange outcome `dy` for a given `i`, `j` and `dx` values.
     pub fn get_dy(
         pool_id: PoolId,
         i: PoolTokenIndex,
@@ -1487,6 +1491,26 @@ impl<T: Config> Pallet<T> {
         let dy = Self::convert_number_to_balance(dy.checked_sub(&fee).ok_or(Error::<T>::Math)?);
 
         Ok(dy)
+    }
+
+    /// The current virtual price of the pool LP token.
+    pub fn get_virtual_price(pool_id: PoolId) -> Result<T::Balance, DispatchError> {
+        let pool = Self::pools(pool_id).ok_or(Error::<T>::PoolNotFound)?;
+
+        let xp = Self::convert_vec_balance_to_number(pool.balances);
+
+        let n_coins = pool.assets.len();
+        let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+
+        let d = Self::get_d(&xp, ann).ok_or(Error::<T>::Math)?;
+
+        let token_supply = T::Assets::total_issuance(pool.pool_asset);
+
+        let ratio = d
+            .checked_div(&Self::convert_balance_to_number(token_supply))
+            .ok_or(Error::<T>::Math)?;
+
+        Ok(Self::convert_number_to_balance(ratio))
     }
 }
 

@@ -280,6 +280,7 @@ mod curve {
     pub const BALANCE_ONE: Balance = 1_000_000_000;
 
     struct AddInitialLiquidityAndMintBobContext {
+        alice: AccountId,
         bob: AccountId,
         charlie: AccountId,
         swap: AccountId,
@@ -291,7 +292,10 @@ mod curve {
         initial_amounts: Vec<Balance>,
     }
 
-    fn init_add_initial_liquidity_and_mint_bob() -> AddInitialLiquidityAndMintBobContext {
+    fn init_add_initial_liquidity_and_mint_bob(
+        fee: Permill,
+        admin_fee: Permill,
+    ) -> AddInitialLiquidityAndMintBobContext {
         let alice = ALICE_ID;
         let bob = BOB_ID;
         let charlie = CHARLIE_ID;
@@ -330,8 +334,8 @@ mod curve {
             Origin::signed(alice),
             vec![coin0, coin1],
             FixedU128::saturating_from_integer(360),
-            Permill::zero(),
-            Permill::zero(),
+            fee,
+            admin_fee,
         ));
 
         let pool_token = 2;
@@ -352,6 +356,7 @@ mod curve {
         }
 
         AddInitialLiquidityAndMintBobContext {
+            alice,
             bob,
             charlie,
             swap,
@@ -529,7 +534,7 @@ mod curve {
                     base_amount,
                     initial_amounts,
                     ..
-                } = init_add_initial_liquidity_and_mint_bob();
+                } = init_add_initial_liquidity_and_mint_bob(Permill::zero(), Permill::zero());
 
                 assert_ok!(CurveAmm::add_liquidity(
                     Origin::signed(bob),
@@ -564,7 +569,7 @@ mod curve {
                     coins,
                     n_coins,
                     ..
-                } = init_add_initial_liquidity_and_mint_bob();
+                } = init_add_initial_liquidity_and_mint_bob(Permill::zero(), Permill::zero());
 
                 let mut amounts = coins.iter().map(|_| FixedI64::one()).collect::<Vec<_>>();
                 amounts[0] = amounts[0].saturating_mul(FixedI64::saturating_from_rational(99, 100));
@@ -606,7 +611,7 @@ mod curve {
                                 base_amount,
                                 initial_amounts,
                                 ..
-                            } = init_add_initial_liquidity_and_mint_bob();
+                            } = init_add_initial_liquidity_and_mint_bob(Permill::zero(), Permill::zero());
 
                             let idx = $value;
 
@@ -656,7 +661,7 @@ mod curve {
                     pool,
                     coins,
                     ..
-                } = init_add_initial_liquidity_and_mint_bob();
+                } = init_add_initial_liquidity_and_mint_bob(Permill::zero(), Permill::zero());
 
                 let amounts = coins
                     .iter()
@@ -679,7 +684,7 @@ mod curve {
                     coins,
                     n_coins,
                     ..
-                } = init_add_initial_liquidity_and_mint_bob();
+                } = init_add_initial_liquidity_and_mint_bob(Permill::zero(), Permill::zero());
 
                 let amounts = coins
                     .iter()
@@ -704,7 +709,7 @@ mod curve {
                     coins,
                     n_coins,
                     ..
-                } = init_add_initial_liquidity_and_mint_bob();
+                } = init_add_initial_liquidity_and_mint_bob(Permill::zero(), Permill::zero());
 
                 let mut amounts = coins.iter().map(|_| FixedI64::one()).collect::<Vec<_>>();
                 amounts[0] = amounts[0].saturating_mul(FixedI64::saturating_from_rational(99, 100));
@@ -736,7 +741,7 @@ mod curve {
                     pool_token,
                     initial_amounts,
                     ..
-                } = init_add_initial_liquidity_and_mint_bob();
+                } = init_add_initial_liquidity_and_mint_bob(Permill::zero(), Permill::zero());
 
                 System::set_block_number(2);
 
@@ -2030,6 +2035,196 @@ mod curve {
         j_above_n_coins_tests! {
             test_j_above_n_coins_0: 9,
             test_j_above_n_coins_1: Balance::max_value(),
+        }
+    }
+
+    mod test_get_virtual_price {
+        use super::*;
+        use crate::traits::Assets;
+        use crate::PoolTokenIndex;
+
+        #[test]
+        fn test_number_go_up() {
+            new_test_ext().execute_with(|| {
+                let max_fee = Permill::from_percent(50);
+
+                let AddInitialLiquidityAndMintBobContext {
+                    bob,
+                    pool,
+                    n_coins,
+                    initial_amounts,
+                    ..
+                } = init_add_initial_liquidity_and_mint_bob(max_fee, max_fee);
+
+                let mut virtual_price = crate::Pallet::<Test>::get_virtual_price(pool).unwrap();
+
+                for (i, &amount) in initial_amounts.iter().enumerate() {
+                    let mut amounts = vec![0; n_coins];
+                    amounts[i] = amount;
+
+                    assert_ok!(CurveAmm::add_liquidity(
+                        Origin::signed(bob),
+                        pool,
+                        amounts,
+                        0
+                    ));
+
+                    let new_virtual_price = crate::Pallet::<Test>::get_virtual_price(pool).unwrap();
+                    assert!(new_virtual_price > virtual_price);
+                    virtual_price = new_virtual_price;
+                }
+            });
+        }
+
+        macro_rules! remove_one_coin_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let idx = $value;
+
+                            let max_fee = Permill::from_percent(50);
+
+                            let AddInitialLiquidityAndMintBobContext {
+                                alice,
+                                pool,
+                                pool_token,
+                                ..
+                            } = init_add_initial_liquidity_and_mint_bob(max_fee, max_fee);
+
+                            let amount = TestAssets::balance(pool_token, &alice) / 10;
+
+                            let virtual_price = crate::Pallet::<Test>::get_virtual_price(pool).unwrap();
+
+                            assert_ok!(CurveAmm::remove_liquidity_one_coin(
+                            Origin::signed(alice),
+                            pool,
+                            amount, idx as PoolTokenIndex, 0,
+                        ));
+
+                            assert!(crate::Pallet::<Test>::get_virtual_price(pool).unwrap() > virtual_price);
+                        });
+                    }
+                )*
+            }
+        }
+
+        remove_one_coin_tests! {
+            test_remove_one_coin_0: 0,
+            test_remove_one_coin_1: 1,
+        }
+
+        macro_rules! remove_imbalance_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let idx = $value;
+
+                            let max_fee = Permill::from_percent(50);
+
+                            let AddInitialLiquidityAndMintBobContext {
+                                alice,
+                                pool,
+                                n_coins,
+                                base_amount,
+                                initial_amounts,
+                                ..
+                            } = init_add_initial_liquidity_and_mint_bob(max_fee, max_fee);
+
+                            let mut amounts = initial_amounts.iter().map(|i| i / 2).collect::<Vec<_>>();
+                            amounts[idx] = 0;
+
+                            let virtual_price = crate::Pallet::<Test>::get_virtual_price(pool).unwrap();
+
+                            assert_ok!(CurveAmm::remove_liquidity_imbalance(
+                                Origin::signed(alice),
+                                pool,
+                                amounts.clone(),
+                                (n_coins as Balance) * BALANCE_ONE * base_amount,
+                            ));
+
+                            assert!(crate::Pallet::<Test>::get_virtual_price(pool).unwrap() > virtual_price);
+                        });
+                    }
+                )*
+            }
+        }
+
+        remove_imbalance_tests! {
+            test_remove_imbalance_0: 0,
+            test_remove_imbalance_1: 1,
+        }
+
+        #[test]
+        fn test_remove() {
+            new_test_ext().execute_with(|| {
+                let max_fee = Permill::from_percent(50);
+
+                let AddInitialLiquidityAndMintBobContext {
+                    alice,
+                    pool,
+                    n_coins,
+                    initial_amounts,
+                    ..
+                } = init_add_initial_liquidity_and_mint_bob(max_fee, max_fee);
+
+                let withdraw_amount = initial_amounts.iter().sum::<Balance>() / 2;
+
+                let virtual_price = crate::Pallet::<Test>::get_virtual_price(pool).unwrap();
+
+                assert_ok!(CurveAmm::remove_liquidity(
+                    Origin::signed(alice),
+                    pool,
+                    withdraw_amount,
+                    vec![0; n_coins]
+                ));
+
+                assert!(crate::Pallet::<Test>::get_virtual_price(pool).unwrap() >= virtual_price);
+            });
+        }
+
+        macro_rules! exchange_tests {
+            ($($name:ident: $value:expr,)*) => {
+                $(
+                    #[test]
+                    fn $name() {
+                        new_test_ext().execute_with(|| {
+                            let (sending, receiving) = $value;
+
+                            let max_fee = Permill::from_percent(50);
+
+                            let AddInitialLiquidityAndMintBobContext {
+                                bob,
+                                pool,
+                                ..
+                            } = init_add_initial_liquidity_and_mint_bob(max_fee, max_fee);
+
+                            let virtual_price = crate::Pallet::<Test>::get_virtual_price(pool).unwrap();
+
+                            let amount = BALANCE_ONE;
+
+                            assert_ok!(CurveAmm::exchange(
+                                Origin::signed(bob),
+                                pool,
+                                sending as PoolTokenIndex,
+                                receiving as PoolTokenIndex,
+                                amount,
+                                0
+                            ));
+
+                            assert!(crate::Pallet::<Test>::get_virtual_price(pool).unwrap() > virtual_price);
+                        });
+                    }
+                )*
+            }
+        }
+
+        exchange_tests! {
+            test_exchange_0_1: (0, 1),
+            test_exchange_1_0: (1, 0),
         }
     }
 }
