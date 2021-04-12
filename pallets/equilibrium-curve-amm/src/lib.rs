@@ -1108,11 +1108,17 @@ impl<T: Config> Pallet<T> {
     /// where `n` is number of coins.
     ///
     /// # Notes
+    /// 
+    /// D invariant calculation in non-overflowing integer operations iteratively
+    ///
+    /// ```pseudocode
+    ///  A * sum(x_i) * n^n + D = A * D * n^n + D^(n+1) / (n^n * prod(x_i))
+    /// ```
     ///
     /// Converging solution:
     ///
-    /// ```latex
-    /// $$d_{j+1} = \frac{a \cdot n^n \cdot \sum x_i - \frac{d_j^{n+1}}{n^n \cdot \prod x_i}}{a \cdot n^n - 1} $$
+    /// ```pseudocode
+    /// D[j + 1] = (A * n^n * sum(x_i) - D[j]^(n+1) / (n^n * prod(x_i))) / (A * n^n - 1)
     /// ```
     pub(crate) fn get_d(xp: &[T::Number], ann: T::Number) -> Option<T::Number> {
         let prec = T::Precision::get();
@@ -1170,52 +1176,15 @@ impl<T: Config> Pallet<T> {
     /// Here `xp` - coin amounts, `ann` is amplification coefficient multiplied by `n^n`, where
     /// `n` is number of coins.
     ///
-    /// # Explanation
+    /// # Notes
     ///
-    /// Here we give some explanations of how the function works and what its variables are used for.
+    /// Done by solving quadratic equation iteratively.
     ///
-    /// ```latex
-    /// Suppose we have $n$ coins with amounts $x_1, \ldots, x_n$. Let $S$ be equal to $\sum_{k=1}^{n}
-    /// x_k$ and $P$ equal to $\prod_{k=1}^n x_k$.
-    /// Let's write StableSwap invariant:
-    /// $$a \cdot n^n \cdot S + d = a \cdot n^n \cdot d + \frac{d^{n+1}}{n^n \cdot P}$$
-    /// where $a$ - amplification coefficient, $d$ - total amount of coins when they have an equal
-    /// price.
+    /// ```pseudocode
+    /// x_1^2 + x_1 * (sum' - (A * n^n - 1) * D / (A * n^n)) = D^(n+1) / (n^2n * prod' * A)
+    /// x_1^2 + b * x_1 = c
     ///
-    /// We know index $i$ of amount that changed to value $x$.  No other parameters have changed and
-    /// StableSwap invariant is preserved. We want to find a new amount with a given index $j$.
-    /// Let's denote this value $x_j$ as $y$. So for $S$ and $P$ we can write following:
-    /// $$S = x_1 + x_2 + \ldots + x_{i-1} + x+x_{i+1} + \ldots + x_{j-1} + y + x_{j+1} + \ldots +
-    /// x_n$$
-    /// $$P = x_1 \cdot x_2 \cdot \ldots \cdot x_{i-1} \cdot x \cdot x_{i+1} \cdot \ldots \cdot x_{j-1}
-    /// \cdot y \cdot x_{j+1} \cdot \ldots \cdot x_n$$
-    ///
-    /// Let sum of all known terms in $S$ be $s$ and product of all known factors in $P$ be $p$. So we
-    /// can rewrite $S$ and $P$:
-    /// $$S = s + y$$
-    /// $$P = p \cdot y$$
-    ///
-    /// Now we can substitute these values into StableSwap invariant:
-    /// $$a \cdot n^n \cdot (s + y) + d = a \cdot n^n \cdot d + \frac{d^{n+1}}{n^n \cdot p \cdot y}$$
-    ///
-    /// It's obvious that $y>0$, $a>0$ and $n>0$. So we can rewrite previous equation as a quadratic
-    /// equation with respect to $y$:
-    /// $$y^2 + \left( s + \frac{d}{a \cdot n^n} - d \right)y = \frac{d^{n+1}}{a \cdot n^{2n} \cdot
-    /// p}$$
-    ///
-    /// Let's introduce variable $ann$ that equals to $a \cdot n^n$. With $ann$ in mind rewrite
-    /// previous equation:
-    /// $$y^2 + \left( s + \frac{d}{ann} - d \right)y = \frac{d^{n+1}}{ann \cdot n^n \cdot p}$$
-    ///
-    /// Let's introduce $b$ and $c$ such that:
-    /// $$b = s + \frac{d}{ann} - d$$
-    /// $$c = \frac{d^{n+1}}{ann \cdot n^n \cdot p} $$
-    ///
-    /// Now we can rewrite our quadratic equation as:
-    /// $$y^2 + by = c$$
-    ///
-    /// To solve this equation numerically using fixed-point iteration method let's rewrite it as:
-    /// $$y = \frac{y^2 + c}{2y + b}$$
+    /// x_1 = (x_1^2 + c) / (2 * x_1 + b)
     /// ```
     pub(crate) fn get_y(
         i: usize,
@@ -1301,12 +1270,16 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Calculate `x[i]` if one reduces `d` from being calculated for `xp` to `d`.
+    ///
+    /// # Notes
+    ///
     /// Done by solving quadratic equation iteratively.
     ///
-    /// ```latex
-    /// \[x_1^2 + x_1 \cdot \left(sum' - \frac{A \cdot n^n - 1) \cdot D}{A \cdot n^n}\right) = \frac{D^{n + 1}}{n^{2n} \cdot prod' \cdot A}\]
-    /// \[x_1^2 + b \cdot x_1 = c\]
-    /// \[x_1 = \frac{x_1^2 + c}{2x_1 + b}\]
+    /// ```pseudocode
+    /// x_1^2 + x_1 * (sum' - (A * n^n - 1) * D / (A * n^n)) = D^(n+1) / (n^2n * prod' * A)
+    /// x_1^2 + b * x_1 = c
+    ///
+    /// x_1 = (x_1^2 + c) / (2 * x_1 + b)
     /// ```
     pub(crate) fn get_y_d(
         i: usize,
