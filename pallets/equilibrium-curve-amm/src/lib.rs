@@ -16,6 +16,12 @@
 //!
 //! Curve’s unique stableswap invariant utilizes liquidity much more efficiently compared to all existing DEXes for stablecoins at already several hundred USD TVL (total value locked). Since initial liquidity on Polkadot is hardly going to be very large, proposed efficiency is VERY important for the ecosystem to flourish.
 //!
+//! ## Deep Dive
+//!
+//! - See original [Curve Whitepaper](https://curve.fi/files/stableswap-paper.pdf) to read about StableSwap invariant.
+//! - See original [Curve pool-template](https://github.com/curvefi/curve-contract/tree/master/contracts/pool-templates/base) source code this pallet is based on.
+//! - See additional description about `get_y` function internals in [Deducing get_y formulas from StableSwap invariant](https://github.com/equilibrium-eosdt/equilibrium-curve-amm/blob/master/docs/deducing-get_y-formulas.pdf) paper.
+//!
 //! ## Setup
 //!
 //! Before using Equilibrium Curve Amm Pallet in your code you need to setup it.
@@ -1108,7 +1114,7 @@ impl<T: Config> Pallet<T> {
     /// where `n` is number of coins.
     ///
     /// # Notes
-    /// 
+    ///
     /// D invariant calculation in non-overflowing integer operations iteratively
     ///
     /// ```pseudocode
@@ -1175,6 +1181,9 @@ impl<T: Config> Pallet<T> {
     /// Find new amount `xp[j]` if one changes some other amount `x[i]` to value `x` preserving StableSwap invariant.
     /// Here `xp` - coin amounts, `ann` is amplification coefficient multiplied by `n^n`, where
     /// `n` is number of coins.
+    ///
+    /// See https://github.com/equilibrium-eosdt/equilibrium-curve-amm/blob/master/docs/deducing-get_y-formulas.pdf
+    /// for detailed explanation about formulas this function uses.
     ///
     /// # Notes
     ///
