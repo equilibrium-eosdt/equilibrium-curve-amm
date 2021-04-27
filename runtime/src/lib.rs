@@ -21,7 +21,7 @@ use sp_runtime::{
     ApplyExtrinsicResult, ModuleId, MultiSignature,
 };
 use sp_runtime::{FixedPointNumber, FixedU128};
-use sp_std::convert::TryFrom;
+use sp_std::convert::{TryFrom, TryInto};
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -32,6 +32,7 @@ use pallet_assets::Call as AssetsCall;
 use sp_runtime::traits::AccountIdConversion;
 use sp_runtime::traits::Dispatchable;
 use sp_runtime::MultiAddress;
+use sp_runtime::FixedI64;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -70,7 +71,7 @@ pub type AccountId = <<Signature as Verify>::Signer as IdentifyAccount>::Account
 pub type AccountIndex = u32;
 
 /// Balance of an account.
-pub type Balance = u128;
+pub type Balance = u64;
 
 /// Index of a transaction in the chain.
 pub type Index = u32;
@@ -106,8 +107,8 @@ pub mod opaque {
 }
 
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-    spec_name: create_runtime_str!("node"),
-    impl_name: create_runtime_str!("node"),
+    spec_name: create_runtime_str!("node-template"),
+    impl_name: create_runtime_str!("node-template"),
     authoring_version: 1,
     spec_version: 1,
     impl_version: 1,
@@ -239,7 +240,7 @@ impl pallet_timestamp::Config for Runtime {
 }
 
 parameter_types! {
-    pub const ExistentialDeposit: u128 = 500;
+    pub const ExistentialDeposit: Balance = 500;
     pub const MaxLocks: u32 = 50;
 }
 
@@ -343,7 +344,8 @@ impl Convert<Permill, FixedU128> for FixedU128Convert {
 
 impl Convert<Balance, FixedU128> for FixedU128Convert {
     fn convert(a: Balance) -> FixedU128 {
-        FixedU128::saturating_from_integer(a)
+        let accuracy = FixedU128::accuracy() / FixedI64::accuracy() as u128;
+        FixedU128::from_inner(a as u128 * accuracy)
     }
 }
 
@@ -361,7 +363,9 @@ impl equilibrium_curve_amm::traits::CheckedConvert<usize, FixedU128> for FixedU1
 
 impl Convert<FixedU128, Balance> for FixedU128Convert {
     fn convert(a: FixedU128) -> Balance {
-        a.into_inner() / FixedU128::accuracy()
+        let accuracy = FixedU128::accuracy() / FixedI64::accuracy() as u128;
+        // NOTE: Please do not use `unwrap` function in production.
+        (a.into_inner() / accuracy).try_into().unwrap()
     }
 }
 
