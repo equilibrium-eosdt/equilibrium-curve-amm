@@ -61,6 +61,19 @@ Now you can start the development chain:
 cargo run --bin node --dev
 ```
 
+### Connecting Explorer
+
+It can be very useful to connect UI to the node you just started.
+
+To do this open https://polkadot.js.org/apps/#/explorer in your browser first.
+
+Follow these steps to register required custom types:
+
+* In the main menu choose Settings tab;
+* In the Settings submenu choose Developer tab;
+* Copy content of the [custom-types.json](custom-types.json) file into text box on the page;
+* Press Save button.
+
 ## Development Roadmap
 
 | Milestone # | Description |

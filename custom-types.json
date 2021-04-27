@@ -1,0 +1,15 @@
+{
+  "Balance":"u64",
+  "Number": "FixedU128",
+  "PoolId": "u32",
+  "PoolTokenIndex": "u32",
+  "AssetId": "u32",
+  "PoolInfo": {
+    "pool_asset": "AssetId",
+    "assets": "Vec<AssetId>",
+    "amplification": "Number",
+    "fee": "Permill",
+    "admin_fee": "Permill",
+    "balances": "Vec<Balance>"
+  }
+}
