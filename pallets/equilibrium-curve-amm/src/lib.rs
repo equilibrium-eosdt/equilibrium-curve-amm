@@ -424,6 +424,11 @@ pub mod pallet {
                         Error::<T>::InconsistentStorage
                     );
 
+                    ensure!(
+                        n_coins == amounts.len(),
+                        Error::<T>::IndexOutOfRange
+                    );
+
                     let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
 
                     let old_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
@@ -706,6 +711,11 @@ pub mod pallet {
                         Error::<T>::InconsistentStorage
                     );
 
+                    ensure!(
+                        n_coins == min_amounts.len(),
+                        Error::<T>::IndexOutOfRange
+                    );
+
                     let token_supply =
                         Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
 
@@ -812,6 +822,11 @@ pub mod pallet {
                     ensure!(
                         n_coins == pool.balances.len(),
                         Error::<T>::InconsistentStorage
+                    );
+
+                    ensure!(
+                        n_coins == amounts.len(),
+                        Error::<T>::IndexOutOfRange
                     );
 
                     let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
