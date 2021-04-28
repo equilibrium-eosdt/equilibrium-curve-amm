@@ -2,11 +2,12 @@ use node_runtime::{
     AccountId, AuraConfig, BalancesConfig, GenesisConfig, GrandpaConfig, Signature, SudoConfig,
     SystemConfig, WASM_BINARY,
 };
-use sc_service::ChainType;
+use sc_service::{ChainType, Properties};
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{sr25519, Pair, Public};
 use sp_finality_grandpa::AuthorityId as GrandpaId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
+use jsonrpc_core::serde_json;
 
 // The URL for the telemetry server.
 // const STAGING_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
@@ -34,6 +35,15 @@ where
 /// Generate an Aura authority key.
 pub fn authority_keys_from_seed(s: &str) -> (AuraId, GrandpaId) {
     (get_from_seed::<AuraId>(s), get_from_seed::<GrandpaId>(s))
+}
+
+fn get_properties() -> Properties {
+    let mut properties = serde_json::Map::new();
+    properties.insert(
+        "tokenDecimals".to_string(),
+        serde_json::Value::Number(serde_json::Number::from(9)),
+    );
+    properties
 }
 
 pub fn development_config() -> Result<ChainSpec, String> {
@@ -69,7 +79,7 @@ pub fn development_config() -> Result<ChainSpec, String> {
         // Protocol ID
         None,
         // Properties
-        None,
+        Some(get_properties()),
         // Extensions
         None,
     ))
@@ -140,11 +150,11 @@ fn testnet_genesis(
             changes_trie_config: Default::default(),
         }),
         pallet_balances: Some(BalancesConfig {
-            // Configure endowed accounts with initial balance of 1 << 60.
+            // Configure endowed accounts with initial balance of 1_000_000.
             balances: endowed_accounts
                 .iter()
                 .cloned()
-                .map(|k| (k, 1 << 60))
+                .map(|k| (k, 1_000_000_000_000_000))
                 .collect(),
         }),
         pallet_aura: Some(AuraConfig {
