@@ -1608,7 +1608,7 @@ mod curve {
                         n_coins as PoolTokenIndex,
                         0
                     ),
-                    Error::<Test>::Math
+                    Error::<Test>::IndexOutOfRange
                 );
             });
         }
