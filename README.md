@@ -74,6 +74,15 @@ Follow these steps to register required custom types:
 * Copy content of the [custom-types.json](custom-types.json) file into text box on the page;
 * Press Save button.
 
+### Example Client
+
+Example client connects to the clean dev node and performs various operations with `equilibrium-curve-amm` pallet.
+See [this readme](client/README.md) for details.
+
+## Adding Pallet to Your Chain
+
+See dedicated [guide](docs/GUIDE.md).
+
 ## Development Roadmap
 
 | Milestone # | Description |

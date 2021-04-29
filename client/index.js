@@ -15,8 +15,8 @@ async function main() {
     const assetA = 0;
     const assetB = 1;
     const assetC = 2;
-    const assets = [assetA, assetB, assetC];
-    for (let asset of assets) {
+    const assetIds = [assetA, assetB, assetC];
+    for (let asset of assetIds) {
         console.info(`Creating asset ${asset}...`)
         await includedInBlock(alice, api.tx.assets.create(asset, alice.address, 1, toBalance(5e-7)));
         console.info(`Asset ${asset} created.`);
@@ -24,7 +24,7 @@ async function main() {
 
     // Mint assets to deposit into the pool
     const assetAmount = 1000;
-    for (let asset of assets) {
+    for (let asset of assetIds) {
         console.info(`Minting asset ${asset}...`)
         await includedInBlock(alice, api.tx.assets.mint(asset, alice.address, toBalance(10 * assetAmount)));
         console.info(`Asset ${asset} minted.`);
@@ -32,7 +32,10 @@ async function main() {
 
     // Create the pool and put all assets created previously into it
     console.info('Creating pool...');
-    const poolId = getPoolId(await includedInBlock(alice, api.tx.curveAmm.createPool(assets, toFixedNumber(1), 0, 0)));
+    const amplification = toFixedNumber(1);
+    const fee = 0;
+    const adminFee = 0;
+    const poolId = getPoolId(await includedInBlock(alice, api.tx.curveAmm.createPool(assetIds, amplification, fee, adminFee)));
     console.info(`Pool ${poolId.toHuman()} created.`);
 
     // Detect asset id of lp asset of the created pool
@@ -42,35 +45,59 @@ async function main() {
 
     // Initial liquidity must be deposited for all assets in the pool
     console.info('Depositing initial liquidity to the pool...');
-    await includedInBlock(alice, api.tx.curveAmm.addLiquidity(poolId, assets.map(_ => toBalance(assetAmount)), toBalance(0)));
+    {
+        const assetAmounts = assetIds.map(_ => toBalance(assetAmount));
+        const minMintAmount = toBalance(0);
+        await includedInBlock(alice, api.tx.curveAmm.addLiquidity(poolId, assetAmounts, minMintAmount));
+    }
     console.info('Initial liquidity deposited.')
 
     // All subsequent liquidity deposits can be for some subset of assets in the pool
     console.info('Depositing liquidity only for first two assets to the pool...');
-    await includedInBlock(alice, api.tx.curveAmm.addLiquidity(
-        poolId,
-        assets.map((_, i) => toBalance(i < 2 ? assetAmount : 0)), toBalance(0))
-    );
+    {
+        const assetAmounts = assetIds.map((_, i) => toBalance(i < 2 ? assetAmount : 0));
+        const minMintAmount = toBalance(0);
+        await includedInBlock(alice, api.tx.curveAmm.addLiquidity(poolId, assetAmounts, minMintAmount));
+    }
     console.info('Liquidity deposited.');
 
     // Exchange 10 units of assetC for assetA
     console.info('Exchanging assets...')
-    await includedInBlock(alice, api.tx.curveAmm.exchange(poolId, assetC, assetA, toBalance(10), toBalance(0)));
+    {
+        const fromAssetIndex = assetIds.indexOf(assetC);
+        const toAssetIndex = assetIds.indexOf(assetA);
+        const fromAssetAmount = toBalance(10);
+        const toAssetMinAmount = toBalance(0);
+        await includedInBlock(alice, api.tx.curveAmm.exchange(poolId, fromAssetIndex, toAssetIndex, fromAssetAmount, toAssetMinAmount));
+    }
     console.info('Assets exchanged.');
 
     // We can remove liquidity in a balanced way
     console.info('Removing liquidity...')
-    await includedInBlock(alice, api.tx.curveAmm.removeLiquidity(poolId, toBalance(3), assets.map(_ => toBalance(0))));
+    {
+        const lpAssetAmount = toBalance(3);
+        const minAssetAmounts = assetIds.map(_ => toBalance(0));
+        await includedInBlock(alice, api.tx.curveAmm.removeLiquidity(poolId, lpAssetAmount, minAssetAmounts));
+    }
     console.info('Liquidity removed.');
 
     // But also we can remove liquidity with more freedom
     console.info('Removing liquidity in imbalanced way...')
-    await includedInBlock(alice, api.tx.curveAmm.removeLiquidityImbalance(poolId, assets.map((x, i) => toBalance(i < 2 ? 1 : 0)), toBalance(assets.length)));
+    {
+        const assetAmounts = assetIds.map((x, i) => toBalance(i < 2 ? 1 : 0));
+        const lpMaxBurnAmount = toBalance(assetIds.length);
+        await includedInBlock(alice, api.tx.curveAmm.removeLiquidityImbalance(poolId, assetAmounts, lpMaxBurnAmount));
+    }
     console.info('Liquidity removed imbalanced.');
 
     // Also we can remove liquidity for single asset
     console.info('Removing liquidity for assetB...')
-    await includedInBlock(alice, api.tx.curveAmm.removeLiquidityOneCoin(poolId, toBalance(3), assetB, toBalance(0)));
+    {
+        const lpAssetAmount = toBalance(3);
+        const assetIndex = assetIds.indexOf(assetB);
+        const minAssetAmount = toBalance(0);
+        await includedInBlock(alice, api.tx.curveAmm.removeLiquidityOneCoin(poolId, lpAssetAmount, assetIndex, minAssetAmount));
+    }
     console.info('Liquidity for assetB removed.');
 }
 

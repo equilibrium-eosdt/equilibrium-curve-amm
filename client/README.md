@@ -1,9 +1,9 @@
 # Curve Amm Example Client
 This program connects to the node,
-set up asset pool and performs adding,
+sets up asset pool and performs adding,
 exchanging and removing liquidity.
 
-## Prepare and run
+## Prepare and Run
 
 Node.js should be already installed.
 
