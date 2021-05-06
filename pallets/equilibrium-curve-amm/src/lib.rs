@@ -39,18 +39,24 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+use crate::traits::CurveAmm;
 use frame_support::codec::{Decode, Encode};
-use frame_support::dispatch::DispatchError;
+use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo};
 use frame_support::ensure;
-use frame_support::traits::Get;
-use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert};
+use frame_support::traits::{Currency, ExistenceRequirement, Get, OnUnbalanced, WithdrawReasons};
+use sp_runtime::traits::{
+    AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert,
+};
 use sp_runtime::Permill;
+use sp_std::collections::btree_set::BTreeSet;
+use sp_std::iter::FromIterator;
 use sp_std::prelude::*;
 use traits::{Assets, CheckedConvert};
 
 #[frame_support::pallet]
 pub mod pallet {
     use super::{traits::Assets, traits::CheckedConvert, PoolId, PoolInfo, PoolTokenIndex};
+    use crate::traits::CurveAmm;
     use frame_support::{
         dispatch::{Codec, DispatchResult, DispatchResultWithPostInfo},
         pallet_prelude::*,
@@ -203,66 +209,7 @@ pub mod pallet {
             admin_fee: Permill,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-
-            // Assets related checks
-            ensure!(assets.len() > 1, Error::<T>::NotEnoughAssets);
-            let unique_assets = BTreeSet::<T::AssetId>::from_iter(assets.iter().copied());
-            ensure!(
-                unique_assets.len() == assets.len(),
-                Error::<T>::DuplicateAssets
-            );
-
-            // Take fee
-            let creation_fee = T::CreationFee::get();
-            let imbalance = T::Currency::withdraw(
-                &who,
-                creation_fee,
-                WithdrawReasons::FEE,
-                ExistenceRequirement::AllowDeath,
-            )
-            .map_err(|_| Error::<T>::InsufficientFunds)?;
-            T::OnUnbalanced::on_unbalanced(imbalance);
-
-            // Add new pool
-            let pool_id =
-                PoolCount::<T>::try_mutate(|pool_count| -> Result<PoolId, DispatchError> {
-                    let pool_id = *pool_count;
-
-                    Pools::<T>::try_mutate_exists(pool_id, |maybe_pool_info| -> DispatchResult {
-                        // We expect that PoolInfos have sequential keys.
-                        // No PoolInfo can have key greater or equal to PoolCount
-                        ensure!(maybe_pool_info.is_none(), Error::<T>::InconsistentStorage);
-
-                        let asset =
-                            T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
-
-                        let balances = vec![
-                            Self::convert_number_to_balance(Self::get_number(0));
-                            assets.len()
-                        ];
-
-                        *maybe_pool_info = Some(PoolInfo {
-                            pool_asset: asset,
-                            assets: assets,
-                            amplification,
-                            fee,
-                            admin_fee,
-                            balances,
-                        });
-
-                        Ok(())
-                    })?;
-
-                    *pool_count = pool_id
-                        .checked_add(1)
-                        .ok_or(Error::<T>::InconsistentStorage)?;
-
-                    Ok(pool_id)
-                })?;
-
-            Self::deposit_event(Event::CreatePool(who.clone(), pool_id));
-
-            Ok(().into())
+            <Self as CurveAmm>::create_pool(&who, assets, amplification, fee, admin_fee)
         }
 
         /// Deposit coins into the pool.
@@ -276,172 +223,7 @@ pub mod pallet {
             min_mint_amount: T::Balance,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-
-            let zero = Self::get_number(0);
-
-            let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
-                Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
-                    let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
-
-                    let n_coins = pool.assets.len();
-
-                    ensure!(
-                        n_coins == pool.balances.len(),
-                        Error::<T>::InconsistentStorage
-                    );
-
-                    ensure!(
-                        n_coins == amounts.len(),
-                        Error::<T>::IndexOutOfRange
-                    );
-
-                    let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
-
-                    let old_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
-
-                    let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
-
-                    let token_supply =
-                        Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
-                    let mut new_balances = old_balances.clone();
-                    let n_amounts = amounts
-                        .iter()
-                        .copied()
-                        .map(Self::convert_balance_to_number)
-                        .collect::<Vec<_>>();
-                    for i in 0..n_coins {
-                        if token_supply == zero {
-                            ensure!(n_amounts[i] > zero, Error::<T>::WrongAssetAmount);
-                        }
-                        new_balances[i] = new_balances[i]
-                            .checked_add(&n_amounts[i])
-                            .ok_or(Error::<T>::Math)?;
-                    }
-
-                    let d1 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
-                    ensure!(d1 > d0, Error::<T>::WrongAssetAmount);
-
-                    let mut fees = vec![zero; n_coins];
-                    let mint_amount;
-
-                    // Only account for fees if we are not the first to deposit
-                    if token_supply > zero {
-                        // Deposit x + withdraw y would charge about same
-                        // fees as a swap. Otherwise, one could exchange w/o paying fees.
-                        // And this formula leads to exactly that equality
-                        // fee = pool.fee * n_coins / (4 * (n_coins - 1))
-                        let fee = (|| {
-                            let n_coins =
-                                <T::Convert as CheckedConvert<usize, T::Number>>::convert(n_coins)?;
-                            let one = Self::get_number(1);
-                            let four = Self::get_number(4);
-
-                            <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee)
-                                .checked_mul(&n_coins)?
-                                .checked_div(&four.checked_mul(&n_coins.checked_sub(&one)?)?)
-                        })()
-                        .ok_or(Error::<T>::Math)?;
-                        let admin_fee =
-                            <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
-                        for i in 0..n_coins {
-                            // ideal_balance = d1 * old_balances[i] / d0
-                            let ideal_balance =
-                                (|| d1.checked_mul(&old_balances[i])?.checked_div(&d0))()
-                                    .ok_or(Error::<T>::Math)?;
-
-                            let new_balance = new_balances[i];
-
-                            // difference = abs(ideal_balance - new_balance)
-                            let difference = (if ideal_balance > new_balance {
-                                ideal_balance.checked_sub(&new_balance)
-                            } else {
-                                new_balance.checked_sub(&ideal_balance)
-                            })
-                            .ok_or(Error::<T>::Math)?;
-
-                            fees[i] = fee.checked_mul(&difference).ok_or(Error::<T>::Math)?;
-                            // new_pool_balance = new_balance - (fees[i] * admin_fee)
-                            let new_pool_balance =
-                                (|| new_balance.checked_sub(&fees[i].checked_mul(&admin_fee)?))()
-                                    .ok_or(Error::<T>::Math)?;
-                            pool.balances[i] = Self::convert_number_to_balance(new_pool_balance);
-
-                            new_balances[i] = new_balances[i]
-                                .checked_sub(&fees[i])
-                                .ok_or(Error::<T>::Math)?;
-                        }
-                        let d2 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
-
-                        // mint_amount = token_supply * (d2 - d0) / d0
-                        mint_amount = (|| {
-                            token_supply
-                                .checked_mul(&d2.checked_sub(&d0)?)?
-                                .checked_div(&d0)
-                        })()
-                        .ok_or(Error::<T>::Math)?;
-                    } else {
-                        pool.balances = Self::convert_vec_number_to_balance(new_balances);
-                        mint_amount = d1;
-                    }
-
-                    ensure!(
-                        mint_amount >= Self::convert_balance_to_number(min_mint_amount),
-                        Error::<T>::RequiredAmountNotReached
-                    );
-
-                    let new_token_supply = token_supply
-                        .checked_add(&mint_amount)
-                        .ok_or(Error::<T>::Math)?;
-
-                    // Ensure that for all tokens user has sufficient amount
-                    for i in 0..n_coins {
-                        ensure!(
-                            T::Assets::balance(pool.assets[i], &who) >= amounts[i],
-                            Error::<T>::InsufficientFunds
-                        );
-                    }
-                    for i in 0..n_coins {
-                        if n_amounts[i] > zero {
-                            T::Assets::transfer(
-                                pool.assets[i],
-                                &who,
-                                &T::ModuleId::get().into_account(),
-                                amounts[i],
-                            )?;
-                        }
-                    }
-
-                    T::Assets::mint(
-                        pool.pool_asset,
-                        &who,
-                        Self::convert_number_to_balance(mint_amount),
-                    )?;
-
-                    let fees = fees
-                        .into_iter()
-                        .map(|x| Self::convert_number_to_balance(x))
-                        .collect::<Vec<T::Balance>>();
-
-                    Ok((
-                        who.clone(),
-                        pool_id,
-                        amounts,
-                        fees,
-                        Self::convert_number_to_balance(d1),
-                        Self::convert_number_to_balance(new_token_supply),
-                    ))
-                })?;
-
-            Self::deposit_event(Event::AddLiquidity(
-                provider,
-                pool_id,
-                token_amounts,
-                fees,
-                invariant,
-                token_supply,
-            ));
-
-            Ok(().into())
+            <Self as CurveAmm>::add_liquidity(&who, pool_id, amounts, min_mint_amount)
         }
 
         /// Perform an exchange between two coins.
@@ -459,89 +241,7 @@ pub mod pallet {
             min_dy: T::Balance,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-
-            let prec = T::Precision::get();
-
-            // sold_id, tokens_sold, bought_id, tokens_bought
-            let (provider, pool_id, dy) =
-                Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
-                    let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
-
-                    let i = i as usize;
-                    let j = j as usize;
-
-                    let n_coins = pool.assets.len();
-
-                    ensure!(i < n_coins && j < n_coins, Error::<T>::IndexOutOfRange);
-
-                    let n_dx = Self::convert_balance_to_number(dx);
-                    let n_min_dy = Self::convert_balance_to_number(min_dy);
-
-                    let xp = Self::convert_vec_balance_to_number(pool.balances.clone());
-
-                    // xp[i] + dx
-                    let x = xp[i].checked_add(&n_dx).ok_or(Error::<T>::Math)?;
-
-                    let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
-                    let y = Self::get_y(i, j, x, &xp, ann).ok_or(Error::<T>::Math)?;
-
-                    // -1 just in case there were some rounding errors
-                    // dy = xp[j] - y - 1
-                    let n_dy =
-                        (|| xp[j].checked_sub(&y)?.checked_sub(&prec))().ok_or(Error::<T>::Math)?;
-
-                    let fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
-                    let dy_fee = n_dy.checked_mul(&fee).ok_or(Error::<T>::Math)?;
-                    let n_dy = n_dy.checked_sub(&dy_fee).ok_or(Error::<T>::Math)?;
-                    ensure!(n_dy >= n_min_dy, Error::<T>::RequiredAmountNotReached);
-
-                    let admin_fee =
-                        <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
-                    let dy_admin_fee = dy_fee.checked_mul(&admin_fee).ok_or(Error::<T>::Math)?;
-
-                    pool.balances[i] = Self::convert_number_to_balance(
-                        xp[i].checked_add(&n_dx).ok_or(Error::<T>::Math)?,
-                    );
-                    // When rounding errors happen, we undercharge admin fee in favor of LP
-                    // pool.balances[j] = xp[j] - n_dy - dy_admin_fee
-                    pool.balances[j] = Self::convert_number_to_balance(
-                        (|| xp[j].checked_sub(&n_dy)?.checked_sub(&dy_admin_fee))()
-                            .ok_or(Error::<T>::Math)?,
-                    );
-
-                    let dy = Self::convert_number_to_balance(n_dy);
-
-                    ensure!(
-                        T::Assets::balance(pool.assets[i], &who) >= dx,
-                        Error::<T>::InsufficientFunds
-                    );
-
-                    ensure!(
-                        T::Assets::balance(pool.assets[j], &T::ModuleId::get().into_account())
-                            >= dy,
-                        Error::<T>::InsufficientFunds
-                    );
-
-                    T::Assets::transfer(
-                        pool.assets[i],
-                        &who,
-                        &T::ModuleId::get().into_account(),
-                        dx,
-                    )?;
-
-                    T::Assets::transfer(
-                        pool.assets[j],
-                        &T::ModuleId::get().into_account(),
-                        &who,
-                        dy,
-                    )?;
-
-                    Ok((who.clone(), pool_id, dy))
-                })?;
-
-            Self::deposit_event(Event::TokenExchange(provider, pool_id, i, dx, j, dy));
-
-            Ok(().into())
+            <Self as CurveAmm>::exchange(&who, pool_id, i, j, dx, min_dy)
         }
 
         /// Withdraw coins from the pool.
@@ -556,113 +256,7 @@ pub mod pallet {
             min_amounts: Vec<T::Balance>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-
-            let zero = Self::get_number(0);
-
-            let n_amount = Self::convert_balance_to_number(amount);
-
-            let min_amounts = min_amounts
-                .into_iter()
-                .map(Self::convert_balance_to_number)
-                .collect::<Vec<_>>();
-
-            let (provider, pool_id, token_amounts, fees, token_supply) =
-                Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
-                    let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
-
-                    let n_coins = pool.assets.len();
-
-                    ensure!(
-                        n_coins == pool.balances.len(),
-                        Error::<T>::InconsistentStorage
-                    );
-
-                    ensure!(
-                        n_coins == min_amounts.len(),
-                        Error::<T>::IndexOutOfRange
-                    );
-
-                    let token_supply =
-                        Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
-
-                    let mut n_amounts = vec![zero; n_coins];
-
-                    for i in 0..n_coins {
-                        let old_balance = Self::convert_balance_to_number(pool.balances[i]);
-                        // value = old_balance * n_amount / token_supply
-                        let value = (|| {
-                            old_balance
-                                .checked_mul(&n_amount)?
-                                .checked_div(&token_supply)
-                        })()
-                        .ok_or(Error::<T>::Math)?;
-                        ensure!(
-                            value >= min_amounts[i],
-                            Error::<T>::RequiredAmountNotReached
-                        );
-
-                        // pool.balances[i] = old_balance - value
-                        pool.balances[i] = Self::convert_number_to_balance(
-                            old_balance
-                                .checked_sub(&value)
-                                .ok_or(Error::<T>::InsufficientFunds)?,
-                        );
-
-                        n_amounts[i] = value;
-                    }
-
-                    let amounts = n_amounts
-                        .iter()
-                        .copied()
-                        .map(Self::convert_number_to_balance)
-                        .collect::<Vec<T::Balance>>();
-
-                    let new_token_supply = token_supply
-                        .checked_sub(&n_amount)
-                        .ok_or(Error::<T>::Math)?;
-
-                    let fees = vec![Self::convert_number_to_balance(zero); n_coins];
-
-                    T::Assets::burn(pool.pool_asset, &who, amount)?;
-
-                    // Ensure that for all tokens we have sufficient amount
-                    for i in 0..n_coins {
-                        ensure!(
-                            T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account())
-                                >= amounts[i],
-                            Error::<T>::InsufficientFunds
-                        );
-                    }
-
-                    for i in 0..n_coins {
-                        if n_amounts[i] > zero {
-                            T::Assets::transfer(
-                                pool.assets[i],
-                                &T::ModuleId::get().into_account(),
-                                &who,
-                                amounts[i],
-                            )?;
-                        }
-                    }
-
-                    Ok((
-                        who.clone(),
-                        pool_id,
-                        amounts,
-                        fees,
-                        Self::convert_number_to_balance(new_token_supply),
-                    ))
-                })?;
-
-            Self::deposit_event(Event::RemoveLiquidity(
-                provider,
-                pool_id,
-                token_amounts,
-                fees,
-                token_supply,
-            ));
-
-            Ok(().into())
+            <Self as CurveAmm>::remove_liquidity(&who, pool_id, amount, min_amounts)
         }
 
         /// Withdraw coins from the pool in an imbalanced amount.
@@ -676,172 +270,7 @@ pub mod pallet {
             max_burn_amount: T::Balance,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-
-            let zero = Self::get_number(0);
-
-            let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
-                Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
-                    let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
-
-                    let n_coins = pool.assets.len();
-
-                    ensure!(
-                        n_coins == pool.balances.len(),
-                        Error::<T>::InconsistentStorage
-                    );
-
-                    ensure!(
-                        n_coins == amounts.len(),
-                        Error::<T>::IndexOutOfRange
-                    );
-
-                    let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
-
-                    let old_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
-
-                    let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
-
-                    let mut new_balances = old_balances.clone();
-                    let n_amounts = amounts
-                        .iter()
-                        .copied()
-                        .map(Self::convert_balance_to_number)
-                        .collect::<Vec<_>>();
-                    for i in 0..n_coins {
-                        new_balances[i] = new_balances[i]
-                            .checked_sub(&n_amounts[i])
-                            .ok_or(Error::<T>::Math)?;
-                    }
-
-                    let d1 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
-
-                    // Deposit x + withdraw y would charge about same
-                    // fees as a swap. Otherwise, one could exchange w/o paying fees.
-                    // And this formula leads to exactly that equality
-                    // fee = pool.fee * n_coins / (4 * (n_coins - 1))
-                    let fee = (|| {
-                        let n_coins =
-                            <T::Convert as CheckedConvert<usize, T::Number>>::convert(n_coins)?;
-                        let one = Self::get_number(1);
-                        let four = one
-                            .checked_add(&one)?
-                            .checked_add(&one)?
-                            .checked_add(&one)?;
-
-                        <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee)
-                            .checked_mul(&n_coins)?
-                            .checked_div(&four.checked_mul(&n_coins.checked_sub(&one)?)?)
-                    })()
-                    .ok_or(Error::<T>::Math)?;
-                    let admin_fee =
-                        <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
-                    let mut fees = vec![zero; n_coins];
-                    for i in 0..n_coins {
-                        let new_balance = new_balances[i];
-
-                        ensure!(d0 != zero, Error::<T>::InsufficientFunds);
-                        // ideal_balance = d1 * old_balances[i] / d0
-                        let ideal_balance =
-                            (|| d1.checked_mul(&old_balances[i])?.checked_div(&d0))()
-                                .ok_or(Error::<T>::Math)?;
-
-                        // difference = abs(ideal_balance - new_balance)
-                        let difference = (if ideal_balance > new_balance {
-                            ideal_balance.checked_sub(&new_balance)
-                        } else {
-                            new_balance.checked_sub(&ideal_balance)
-                        })
-                        .ok_or(Error::<T>::Math)?;
-
-                        fees[i] = fee.checked_mul(&difference).ok_or(Error::<T>::Math)?;
-
-                        // pool.balances[i] = new_balance - (fees[i] * admin_fee)
-                        pool.balances[i] = Self::convert_number_to_balance(
-                            (|| new_balance.checked_sub(&fees[i].checked_mul(&admin_fee)?))()
-                                .ok_or(Error::<T>::Math)?,
-                        );
-
-                        new_balances[i] = new_balances[i]
-                            .checked_sub(&fees[i])
-                            .ok_or(Error::<T>::Math)?;
-                    }
-                    let d2 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
-
-                    let token_supply =
-                        Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
-                    // token_amount = token_supply * (d0 - d2) / d0
-                    let token_amount = (|| {
-                        token_supply
-                            .checked_mul(&d0.checked_sub(&d2)?)?
-                            .checked_div(&d0)
-                    })()
-                    .ok_or(Error::<T>::Math)?;
-                    ensure!(token_amount != zero, Error::<T>::WrongAssetAmount);
-                    // In case of rounding errors - make it unfavorable for the "attacker"
-                    let token_amount = token_amount
-                        .checked_add(&T::Precision::get())
-                        .ok_or(Error::<T>::Math)?;
-
-                    ensure!(
-                        token_amount <= Self::convert_balance_to_number(max_burn_amount),
-                        Error::<T>::RequiredAmountNotReached
-                    );
-
-                    let new_token_supply = token_supply
-                        .checked_sub(&token_amount)
-                        .ok_or(Error::<T>::Math)?;
-
-                    T::Assets::burn(
-                        pool.pool_asset,
-                        &who,
-                        Self::convert_number_to_balance(token_amount),
-                    )?;
-
-                    // Ensure that for all tokens we have sufficient amount
-                    for i in 0..n_coins {
-                        ensure!(
-                            T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account())
-                                >= amounts[i],
-                            Error::<T>::InsufficientFunds
-                        );
-                    }
-
-                    for i in 0..n_coins {
-                        if n_amounts[i] > zero {
-                            T::Assets::transfer(
-                                pool.assets[i],
-                                &T::ModuleId::get().into_account(),
-                                &who,
-                                amounts[i],
-                            )?;
-                        }
-                    }
-
-                    let fees = fees
-                        .into_iter()
-                        .map(|x| Self::convert_number_to_balance(x))
-                        .collect::<Vec<T::Balance>>();
-
-                    Ok((
-                        who.clone(),
-                        pool_id,
-                        amounts,
-                        fees,
-                        Self::convert_number_to_balance(d1),
-                        Self::convert_number_to_balance(new_token_supply),
-                    ))
-                })?;
-
-            Self::deposit_event(Event::RemoveLiquidityImbalance(
-                provider,
-                pool_id,
-                token_amounts,
-                fees,
-                invariant,
-                token_supply,
-            ));
-
-            Ok(().into())
+            <Self as CurveAmm>::remove_liquidity_imbalance(&who, pool_id, amounts, max_burn_amount)
         }
 
         /// Withdraw a signe coin from the pool.
@@ -857,99 +286,13 @@ pub mod pallet {
             min_amount: T::Balance,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-
-            let i = i as usize;
-
-            let n_token_amount = Self::convert_balance_to_number(token_amount);
-
-            let (provider, pool_id, burn_amount, dy, new_token_supply) =
-                Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
-                    let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
-
-                    let n_coins = pool.assets.len();
-
-                    ensure!(
-                        n_coins == pool.balances.len(),
-                        Error::<T>::InconsistentStorage
-                    );
-                    ensure!(
-                        i < n_coins,
-                        Error::<T>::IndexOutOfRange
-                    );
-
-                    let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
-
-                    let token_supply =
-                        Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
-                    let pool_fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
-
-                    let pool_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
-                    let (dy, dy_fee) = Self::calc_withdraw_one_coin(
-                        n_token_amount,
-                        i,
-                        &pool_balances,
-                        ann,
-                        token_supply,
-                        pool_fee,
-                    )
-                    .ok_or(Error::<T>::Math)?;
-
-                    ensure!(
-                        dy > Self::convert_balance_to_number(min_amount),
-                        Error::<T>::RequiredAmountNotReached
-                    );
-
-                    let admin_fee =
-                        <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
-
-                    // pool.balances[i] = pool.balances[i] - (dy + dy_fee * pool.admin_fee)
-                    pool.balances[i] = Self::convert_number_to_balance(
-                        (|| {
-                            pool_balances[i]
-                                .checked_sub(&dy.checked_add(&dy_fee.checked_mul(&admin_fee)?)?)
-                        })()
-                        .ok_or(Error::<T>::Math)?,
-                    );
-
-                    let new_token_supply = token_supply
-                        .checked_add(&n_token_amount)
-                        .ok_or(Error::<T>::Math)?;
-
-                    let b_dy = Self::convert_number_to_balance(dy);
-
-                    ensure!(
-                        T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account())
-                            >= b_dy,
-                        Error::<T>::InsufficientFunds
-                    );
-
-                    T::Assets::burn(pool.pool_asset, &who, token_amount)?;
-
-                    T::Assets::transfer(
-                        pool.assets[i],
-                        &T::ModuleId::get().into_account(),
-                        &who,
-                        b_dy,
-                    )?;
-
-                    Ok((
-                        who.clone(),
-                        pool_id,
-                        token_amount,
-                        b_dy,
-                        Self::convert_number_to_balance(new_token_supply),
-                    ))
-                })?;
-
-            Self::deposit_event(Event::RemoveLiquidityOne(
-                provider,
+            <Self as CurveAmm>::remove_liquidity_one_coin(
+                &who,
                 pool_id,
-                burn_amount,
-                dy,
-                new_token_supply,
-            ));
-
-            Ok(().into())
+                token_amount,
+                i,
+                min_amount,
+            )
         }
     }
 }
@@ -1381,10 +724,732 @@ impl<T: Config> Pallet<T> {
     }
 }
 
+impl<T: Config> CurveAmm for Pallet<T> {
+    type AssetId = T::AssetId;
+    type Number = T::Number;
+    type Balance = T::Balance;
+    type AccountId = T::AccountId;
+
+    fn pool_count() -> PoolId {
+        PoolCount::<T>::get()
+    }
+
+    fn pool(id: PoolId) -> Option<PoolInfo<Self::AssetId, Self::Number, Self::Balance>> {
+        Pools::<T>::get(id)
+    }
+
+    fn create_pool(
+        who: &Self::AccountId,
+        assets: Vec<Self::AssetId>,
+        amplification: Self::Number,
+        fee: Permill,
+        admin_fee: Permill,
+    ) -> DispatchResultWithPostInfo {
+        // Assets related checks
+        ensure!(assets.len() > 1, Error::<T>::NotEnoughAssets);
+        let unique_assets = BTreeSet::<T::AssetId>::from_iter(assets.iter().copied());
+        ensure!(
+            unique_assets.len() == assets.len(),
+            Error::<T>::DuplicateAssets
+        );
+
+        // Take fee
+        let creation_fee = T::CreationFee::get();
+        let imbalance = T::Currency::withdraw(
+            &who,
+            creation_fee,
+            WithdrawReasons::FEE,
+            ExistenceRequirement::AllowDeath,
+        )
+        .map_err(|_| Error::<T>::InsufficientFunds)?;
+        T::OnUnbalanced::on_unbalanced(imbalance);
+
+        // Add new pool
+        let pool_id = PoolCount::<T>::try_mutate(|pool_count| -> Result<PoolId, DispatchError> {
+            let pool_id = *pool_count;
+
+            Pools::<T>::try_mutate_exists(pool_id, |maybe_pool_info| -> DispatchResult {
+                // We expect that PoolInfos have sequential keys.
+                // No PoolInfo can have key greater or equal to PoolCount
+                ensure!(maybe_pool_info.is_none(), Error::<T>::InconsistentStorage);
+
+                let asset = T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
+
+                let balances =
+                    vec![Self::convert_number_to_balance(Self::get_number(0)); assets.len()];
+
+                *maybe_pool_info = Some(PoolInfo {
+                    pool_asset: asset,
+                    assets,
+                    amplification,
+                    fee,
+                    admin_fee,
+                    balances,
+                });
+
+                Ok(())
+            })?;
+
+            *pool_count = pool_id
+                .checked_add(1)
+                .ok_or(Error::<T>::InconsistentStorage)?;
+
+            Ok(pool_id)
+        })?;
+
+        Self::deposit_event(Event::CreatePool(who.clone(), pool_id));
+
+        Ok(().into())
+    }
+
+    fn add_liquidity(
+        who: &Self::AccountId,
+        pool_id: PoolId,
+        amounts: Vec<Self::Balance>,
+        min_mint_amount: Self::Balance,
+    ) -> DispatchResultWithPostInfo {
+        let zero = Self::get_number(0);
+
+        let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
+            Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
+                let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
+
+                let n_coins = pool.assets.len();
+
+                ensure!(
+                    n_coins == pool.balances.len(),
+                    Error::<T>::InconsistentStorage
+                );
+
+                ensure!(n_coins == amounts.len(), Error::<T>::IndexOutOfRange);
+
+                let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+
+                let old_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
+
+                let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
+
+                let token_supply =
+                    Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
+                let mut new_balances = old_balances.clone();
+                let n_amounts = amounts
+                    .iter()
+                    .copied()
+                    .map(Self::convert_balance_to_number)
+                    .collect::<Vec<_>>();
+                for i in 0..n_coins {
+                    if token_supply == zero {
+                        ensure!(n_amounts[i] > zero, Error::<T>::WrongAssetAmount);
+                    }
+                    new_balances[i] = new_balances[i]
+                        .checked_add(&n_amounts[i])
+                        .ok_or(Error::<T>::Math)?;
+                }
+
+                let d1 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
+                ensure!(d1 > d0, Error::<T>::WrongAssetAmount);
+
+                let mut fees = vec![zero; n_coins];
+                let mint_amount;
+
+                // Only account for fees if we are not the first to deposit
+                if token_supply > zero {
+                    // Deposit x + withdraw y would charge about same
+                    // fees as a swap. Otherwise, one could exchange w/o paying fees.
+                    // And this formula leads to exactly that equality
+                    // fee = pool.fee * n_coins / (4 * (n_coins - 1))
+                    let fee = (|| {
+                        let n_coins =
+                            <T::Convert as CheckedConvert<usize, T::Number>>::convert(n_coins)?;
+                        let one = Self::get_number(1);
+                        let four = Self::get_number(4);
+
+                        <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee)
+                            .checked_mul(&n_coins)?
+                            .checked_div(&four.checked_mul(&n_coins.checked_sub(&one)?)?)
+                    })()
+                    .ok_or(Error::<T>::Math)?;
+                    let admin_fee =
+                        <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
+                    for i in 0..n_coins {
+                        // ideal_balance = d1 * old_balances[i] / d0
+                        let ideal_balance =
+                            (|| d1.checked_mul(&old_balances[i])?.checked_div(&d0))()
+                                .ok_or(Error::<T>::Math)?;
+
+                        let new_balance = new_balances[i];
+
+                        // difference = abs(ideal_balance - new_balance)
+                        let difference = (if ideal_balance > new_balance {
+                            ideal_balance.checked_sub(&new_balance)
+                        } else {
+                            new_balance.checked_sub(&ideal_balance)
+                        })
+                        .ok_or(Error::<T>::Math)?;
+
+                        fees[i] = fee.checked_mul(&difference).ok_or(Error::<T>::Math)?;
+                        // new_pool_balance = new_balance - (fees[i] * admin_fee)
+                        let new_pool_balance =
+                            (|| new_balance.checked_sub(&fees[i].checked_mul(&admin_fee)?))()
+                                .ok_or(Error::<T>::Math)?;
+                        pool.balances[i] = Self::convert_number_to_balance(new_pool_balance);
+
+                        new_balances[i] = new_balances[i]
+                            .checked_sub(&fees[i])
+                            .ok_or(Error::<T>::Math)?;
+                    }
+                    let d2 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
+
+                    // mint_amount = token_supply * (d2 - d0) / d0
+                    mint_amount = (|| {
+                        token_supply
+                            .checked_mul(&d2.checked_sub(&d0)?)?
+                            .checked_div(&d0)
+                    })()
+                    .ok_or(Error::<T>::Math)?;
+                } else {
+                    pool.balances = Self::convert_vec_number_to_balance(new_balances);
+                    mint_amount = d1;
+                }
+
+                ensure!(
+                    mint_amount >= Self::convert_balance_to_number(min_mint_amount),
+                    Error::<T>::RequiredAmountNotReached
+                );
+
+                let new_token_supply = token_supply
+                    .checked_add(&mint_amount)
+                    .ok_or(Error::<T>::Math)?;
+
+                // Ensure that for all tokens user has sufficient amount
+                for i in 0..n_coins {
+                    ensure!(
+                        T::Assets::balance(pool.assets[i], &who) >= amounts[i],
+                        Error::<T>::InsufficientFunds
+                    );
+                }
+                for i in 0..n_coins {
+                    if n_amounts[i] > zero {
+                        T::Assets::transfer(
+                            pool.assets[i],
+                            &who,
+                            &T::ModuleId::get().into_account(),
+                            amounts[i],
+                        )?;
+                    }
+                }
+
+                T::Assets::mint(
+                    pool.pool_asset,
+                    &who,
+                    Self::convert_number_to_balance(mint_amount),
+                )?;
+
+                let fees = fees
+                    .into_iter()
+                    .map(|x| Self::convert_number_to_balance(x))
+                    .collect::<Vec<T::Balance>>();
+
+                Ok((
+                    who.clone(),
+                    pool_id,
+                    amounts,
+                    fees,
+                    Self::convert_number_to_balance(d1),
+                    Self::convert_number_to_balance(new_token_supply),
+                ))
+            })?;
+
+        Self::deposit_event(Event::AddLiquidity(
+            provider,
+            pool_id,
+            token_amounts,
+            fees,
+            invariant,
+            token_supply,
+        ));
+
+        Ok(().into())
+    }
+
+    fn exchange(
+        who: &Self::AccountId,
+        pool_id: PoolId,
+        i: PoolTokenIndex,
+        j: PoolTokenIndex,
+        dx: Self::Balance,
+        min_dy: Self::Balance,
+    ) -> DispatchResultWithPostInfo {
+        let prec = T::Precision::get();
+
+        // sold_id, tokens_sold, bought_id, tokens_bought
+        let (provider, pool_id, dy) =
+            Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
+                let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
+
+                let i = i as usize;
+                let j = j as usize;
+
+                let n_coins = pool.assets.len();
+
+                ensure!(i < n_coins && j < n_coins, Error::<T>::IndexOutOfRange);
+
+                let n_dx = Self::convert_balance_to_number(dx);
+                let n_min_dy = Self::convert_balance_to_number(min_dy);
+
+                let xp = Self::convert_vec_balance_to_number(pool.balances.clone());
+
+                // xp[i] + dx
+                let x = xp[i].checked_add(&n_dx).ok_or(Error::<T>::Math)?;
+
+                let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+                let y = Self::get_y(i, j, x, &xp, ann).ok_or(Error::<T>::Math)?;
+
+                // -1 just in case there were some rounding errors
+                // dy = xp[j] - y - 1
+                let n_dy =
+                    (|| xp[j].checked_sub(&y)?.checked_sub(&prec))().ok_or(Error::<T>::Math)?;
+
+                let fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
+                let dy_fee = n_dy.checked_mul(&fee).ok_or(Error::<T>::Math)?;
+                let n_dy = n_dy.checked_sub(&dy_fee).ok_or(Error::<T>::Math)?;
+                ensure!(n_dy >= n_min_dy, Error::<T>::RequiredAmountNotReached);
+
+                let admin_fee =
+                    <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
+                let dy_admin_fee = dy_fee.checked_mul(&admin_fee).ok_or(Error::<T>::Math)?;
+
+                pool.balances[i] = Self::convert_number_to_balance(
+                    xp[i].checked_add(&n_dx).ok_or(Error::<T>::Math)?,
+                );
+                // When rounding errors happen, we undercharge admin fee in favor of LP
+                // pool.balances[j] = xp[j] - n_dy - dy_admin_fee
+                pool.balances[j] = Self::convert_number_to_balance(
+                    (|| xp[j].checked_sub(&n_dy)?.checked_sub(&dy_admin_fee))()
+                        .ok_or(Error::<T>::Math)?,
+                );
+
+                let dy = Self::convert_number_to_balance(n_dy);
+
+                ensure!(
+                    T::Assets::balance(pool.assets[i], &who) >= dx,
+                    Error::<T>::InsufficientFunds
+                );
+
+                ensure!(
+                    T::Assets::balance(pool.assets[j], &T::ModuleId::get().into_account()) >= dy,
+                    Error::<T>::InsufficientFunds
+                );
+
+                T::Assets::transfer(pool.assets[i], &who, &T::ModuleId::get().into_account(), dx)?;
+
+                T::Assets::transfer(pool.assets[j], &T::ModuleId::get().into_account(), &who, dy)?;
+
+                Ok((who.clone(), pool_id, dy))
+            })?;
+
+        Self::deposit_event(Event::TokenExchange(provider, pool_id, i, dx, j, dy));
+
+        Ok(().into())
+    }
+
+    fn remove_liquidity(
+        who: &Self::AccountId,
+        pool_id: PoolId,
+        amount: Self::Balance,
+        min_amounts: Vec<Self::Balance>,
+    ) -> DispatchResultWithPostInfo {
+        let zero = Self::get_number(0);
+
+        let n_amount = Self::convert_balance_to_number(amount);
+
+        let min_amounts = min_amounts
+            .into_iter()
+            .map(Self::convert_balance_to_number)
+            .collect::<Vec<_>>();
+
+        let (provider, pool_id, token_amounts, fees, token_supply) =
+            Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
+                let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
+
+                let n_coins = pool.assets.len();
+
+                ensure!(
+                    n_coins == pool.balances.len(),
+                    Error::<T>::InconsistentStorage
+                );
+
+                ensure!(n_coins == min_amounts.len(), Error::<T>::IndexOutOfRange);
+
+                let token_supply =
+                    Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
+
+                let mut n_amounts = vec![zero; n_coins];
+
+                for i in 0..n_coins {
+                    let old_balance = Self::convert_balance_to_number(pool.balances[i]);
+                    // value = old_balance * n_amount / token_supply
+                    let value = (|| {
+                        old_balance
+                            .checked_mul(&n_amount)?
+                            .checked_div(&token_supply)
+                    })()
+                    .ok_or(Error::<T>::Math)?;
+                    ensure!(
+                        value >= min_amounts[i],
+                        Error::<T>::RequiredAmountNotReached
+                    );
+
+                    // pool.balances[i] = old_balance - value
+                    pool.balances[i] = Self::convert_number_to_balance(
+                        old_balance
+                            .checked_sub(&value)
+                            .ok_or(Error::<T>::InsufficientFunds)?,
+                    );
+
+                    n_amounts[i] = value;
+                }
+
+                let amounts = n_amounts
+                    .iter()
+                    .copied()
+                    .map(Self::convert_number_to_balance)
+                    .collect::<Vec<T::Balance>>();
+
+                let new_token_supply = token_supply
+                    .checked_sub(&n_amount)
+                    .ok_or(Error::<T>::Math)?;
+
+                let fees = vec![Self::convert_number_to_balance(zero); n_coins];
+
+                T::Assets::burn(pool.pool_asset, &who, amount)?;
+
+                // Ensure that for all tokens we have sufficient amount
+                for i in 0..n_coins {
+                    ensure!(
+                        T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account())
+                            >= amounts[i],
+                        Error::<T>::InsufficientFunds
+                    );
+                }
+
+                for i in 0..n_coins {
+                    if n_amounts[i] > zero {
+                        T::Assets::transfer(
+                            pool.assets[i],
+                            &T::ModuleId::get().into_account(),
+                            &who,
+                            amounts[i],
+                        )?;
+                    }
+                }
+
+                Ok((
+                    who.clone(),
+                    pool_id,
+                    amounts,
+                    fees,
+                    Self::convert_number_to_balance(new_token_supply),
+                ))
+            })?;
+
+        Self::deposit_event(Event::RemoveLiquidity(
+            provider,
+            pool_id,
+            token_amounts,
+            fees,
+            token_supply,
+        ));
+
+        Ok(().into())
+    }
+
+    fn remove_liquidity_imbalance(
+        who: &Self::AccountId,
+        pool_id: PoolId,
+        amounts: Vec<Self::Balance>,
+        max_burn_amount: Self::Balance,
+    ) -> DispatchResultWithPostInfo {
+        let zero = Self::get_number(0);
+
+        let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
+            Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
+                let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
+
+                let n_coins = pool.assets.len();
+
+                ensure!(
+                    n_coins == pool.balances.len(),
+                    Error::<T>::InconsistentStorage
+                );
+
+                ensure!(n_coins == amounts.len(), Error::<T>::IndexOutOfRange);
+
+                let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+
+                let old_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
+
+                let d0 = Self::get_d(&old_balances, ann).ok_or(Error::<T>::Math)?;
+
+                let mut new_balances = old_balances.clone();
+                let n_amounts = amounts
+                    .iter()
+                    .copied()
+                    .map(Self::convert_balance_to_number)
+                    .collect::<Vec<_>>();
+                for i in 0..n_coins {
+                    new_balances[i] = new_balances[i]
+                        .checked_sub(&n_amounts[i])
+                        .ok_or(Error::<T>::Math)?;
+                }
+
+                let d1 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
+
+                // Deposit x + withdraw y would charge about same
+                // fees as a swap. Otherwise, one could exchange w/o paying fees.
+                // And this formula leads to exactly that equality
+                // fee = pool.fee * n_coins / (4 * (n_coins - 1))
+                let fee = (|| {
+                    let n_coins =
+                        <T::Convert as CheckedConvert<usize, T::Number>>::convert(n_coins)?;
+                    let one = Self::get_number(1);
+                    let four = one
+                        .checked_add(&one)?
+                        .checked_add(&one)?
+                        .checked_add(&one)?;
+
+                    <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee)
+                        .checked_mul(&n_coins)?
+                        .checked_div(&four.checked_mul(&n_coins.checked_sub(&one)?)?)
+                })()
+                .ok_or(Error::<T>::Math)?;
+                let admin_fee =
+                    <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
+                let mut fees = vec![zero; n_coins];
+                for i in 0..n_coins {
+                    let new_balance = new_balances[i];
+
+                    ensure!(d0 != zero, Error::<T>::InsufficientFunds);
+                    // ideal_balance = d1 * old_balances[i] / d0
+                    let ideal_balance = (|| d1.checked_mul(&old_balances[i])?.checked_div(&d0))()
+                        .ok_or(Error::<T>::Math)?;
+
+                    // difference = abs(ideal_balance - new_balance)
+                    let difference = (if ideal_balance > new_balance {
+                        ideal_balance.checked_sub(&new_balance)
+                    } else {
+                        new_balance.checked_sub(&ideal_balance)
+                    })
+                    .ok_or(Error::<T>::Math)?;
+
+                    fees[i] = fee.checked_mul(&difference).ok_or(Error::<T>::Math)?;
+
+                    // pool.balances[i] = new_balance - (fees[i] * admin_fee)
+                    pool.balances[i] = Self::convert_number_to_balance(
+                        (|| new_balance.checked_sub(&fees[i].checked_mul(&admin_fee)?))()
+                            .ok_or(Error::<T>::Math)?,
+                    );
+
+                    new_balances[i] = new_balances[i]
+                        .checked_sub(&fees[i])
+                        .ok_or(Error::<T>::Math)?;
+                }
+                let d2 = Self::get_d(&new_balances, ann).ok_or(Error::<T>::Math)?;
+
+                let token_supply =
+                    Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
+                // token_amount = token_supply * (d0 - d2) / d0
+                let token_amount = (|| {
+                    token_supply
+                        .checked_mul(&d0.checked_sub(&d2)?)?
+                        .checked_div(&d0)
+                })()
+                .ok_or(Error::<T>::Math)?;
+                ensure!(token_amount != zero, Error::<T>::WrongAssetAmount);
+                // In case of rounding errors - make it unfavorable for the "attacker"
+                let token_amount = token_amount
+                    .checked_add(&T::Precision::get())
+                    .ok_or(Error::<T>::Math)?;
+
+                ensure!(
+                    token_amount <= Self::convert_balance_to_number(max_burn_amount),
+                    Error::<T>::RequiredAmountNotReached
+                );
+
+                let new_token_supply = token_supply
+                    .checked_sub(&token_amount)
+                    .ok_or(Error::<T>::Math)?;
+
+                T::Assets::burn(
+                    pool.pool_asset,
+                    &who,
+                    Self::convert_number_to_balance(token_amount),
+                )?;
+
+                // Ensure that for all tokens we have sufficient amount
+                for i in 0..n_coins {
+                    ensure!(
+                        T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account())
+                            >= amounts[i],
+                        Error::<T>::InsufficientFunds
+                    );
+                }
+
+                for i in 0..n_coins {
+                    if n_amounts[i] > zero {
+                        T::Assets::transfer(
+                            pool.assets[i],
+                            &T::ModuleId::get().into_account(),
+                            &who,
+                            amounts[i],
+                        )?;
+                    }
+                }
+
+                let fees = fees
+                    .into_iter()
+                    .map(|x| Self::convert_number_to_balance(x))
+                    .collect::<Vec<T::Balance>>();
+
+                Ok((
+                    who.clone(),
+                    pool_id,
+                    amounts,
+                    fees,
+                    Self::convert_number_to_balance(d1),
+                    Self::convert_number_to_balance(new_token_supply),
+                ))
+            })?;
+
+        Self::deposit_event(Event::RemoveLiquidityImbalance(
+            provider,
+            pool_id,
+            token_amounts,
+            fees,
+            invariant,
+            token_supply,
+        ));
+
+        Ok(().into())
+    }
+
+    fn remove_liquidity_one_coin(
+        who: &Self::AccountId,
+        pool_id: PoolId,
+        token_amount: Self::Balance,
+        i: PoolTokenIndex,
+        min_amount: Self::Balance,
+    ) -> DispatchResultWithPostInfo {
+        let i = i as usize;
+
+        let n_token_amount = Self::convert_balance_to_number(token_amount);
+
+        let (provider, pool_id, burn_amount, dy, new_token_supply) =
+            Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
+                let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
+
+                let n_coins = pool.assets.len();
+
+                ensure!(
+                    n_coins == pool.balances.len(),
+                    Error::<T>::InconsistentStorage
+                );
+                ensure!(i < n_coins, Error::<T>::IndexOutOfRange);
+
+                let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
+
+                let token_supply =
+                    Self::convert_balance_to_number(T::Assets::total_issuance(pool.pool_asset));
+                let pool_fee = <T::Convert as Convert<Permill, T::Number>>::convert(pool.fee);
+
+                let pool_balances = Self::convert_vec_balance_to_number(pool.balances.clone());
+                let (dy, dy_fee) = Self::calc_withdraw_one_coin(
+                    n_token_amount,
+                    i,
+                    &pool_balances,
+                    ann,
+                    token_supply,
+                    pool_fee,
+                )
+                .ok_or(Error::<T>::Math)?;
+
+                ensure!(
+                    dy > Self::convert_balance_to_number(min_amount),
+                    Error::<T>::RequiredAmountNotReached
+                );
+
+                let admin_fee =
+                    <T::Convert as Convert<Permill, T::Number>>::convert(pool.admin_fee);
+
+                // pool.balances[i] = pool.balances[i] - (dy + dy_fee * pool.admin_fee)
+                pool.balances[i] = Self::convert_number_to_balance(
+                    (|| {
+                        pool_balances[i]
+                            .checked_sub(&dy.checked_add(&dy_fee.checked_mul(&admin_fee)?)?)
+                    })()
+                    .ok_or(Error::<T>::Math)?,
+                );
+
+                let new_token_supply = token_supply
+                    .checked_add(&n_token_amount)
+                    .ok_or(Error::<T>::Math)?;
+
+                let b_dy = Self::convert_number_to_balance(dy);
+
+                ensure!(
+                    T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account()) >= b_dy,
+                    Error::<T>::InsufficientFunds
+                );
+
+                T::Assets::burn(pool.pool_asset, &who, token_amount)?;
+
+                T::Assets::transfer(
+                    pool.assets[i],
+                    &T::ModuleId::get().into_account(),
+                    &who,
+                    b_dy,
+                )?;
+
+                Ok((
+                    who.clone(),
+                    pool_id,
+                    token_amount,
+                    b_dy,
+                    Self::convert_number_to_balance(new_token_supply),
+                ))
+            })?;
+
+        Self::deposit_event(Event::RemoveLiquidityOne(
+            provider,
+            pool_id,
+            burn_amount,
+            dy,
+            new_token_supply,
+        ));
+
+        Ok(().into())
+    }
+
+    fn get_dy(
+        pool_id: PoolId,
+        i: PoolTokenIndex,
+        j: PoolTokenIndex,
+        dx: Self::Balance,
+    ) -> Result<Self::Balance, DispatchError> {
+        Pallet::<T>::get_dy(pool_id, i, j, dx)
+    }
+
+    fn get_virtual_price(pool_id: PoolId) -> Result<Self::Balance, DispatchError> {
+        Pallet::<T>::get_virtual_price(pool_id)
+    }
+}
+
 /// Module that contain traits which must be implemented somewhere in the runtime
 /// in order to equilibrium_curve_amm pallet can work properly.
 pub mod traits {
-    use frame_support::dispatch::{DispatchError, DispatchResult};
+    use crate::{PoolId, PoolInfo, PoolTokenIndex};
+    use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo};
+    use sp_runtime::Permill;
 
     /// Pallet equilibrium_curve_amm should interact with custom Assets.
     /// In order to do this it relies on `Assets` trait implementation.
@@ -1413,6 +1478,71 @@ pub mod traits {
     pub trait CheckedConvert<A, B> {
         /// Make a conversion
         fn convert(a: A) -> Option<B>;
+    }
+
+    pub trait CurveAmm {
+        type AssetId;
+        type Number;
+        type Balance;
+        type AccountId;
+
+        fn pool_count() -> PoolId;
+        fn pool(id: PoolId) -> Option<PoolInfo<Self::AssetId, Self::Number, Self::Balance>>;
+
+        fn create_pool(
+            who: &Self::AccountId,
+            assets: Vec<Self::AssetId>,
+            amplification: Self::Number,
+            fee: Permill,
+            admin_fee: Permill,
+        ) -> DispatchResultWithPostInfo;
+
+        fn add_liquidity(
+            who: &Self::AccountId,
+            pool_id: PoolId,
+            amounts: Vec<Self::Balance>,
+            min_mint_amount: Self::Balance,
+        ) -> DispatchResultWithPostInfo;
+
+        fn exchange(
+            who: &Self::AccountId,
+            pool_id: PoolId,
+            i: PoolTokenIndex,
+            j: PoolTokenIndex,
+            dx: Self::Balance,
+            min_dy: Self::Balance,
+        ) -> DispatchResultWithPostInfo;
+
+        fn remove_liquidity(
+            who: &Self::AccountId,
+            pool_id: PoolId,
+            amount: Self::Balance,
+            min_amounts: Vec<Self::Balance>,
+        ) -> DispatchResultWithPostInfo;
+
+        fn remove_liquidity_imbalance(
+            who: &Self::AccountId,
+            pool_id: PoolId,
+            amounts: Vec<Self::Balance>,
+            max_burn_amount: Self::Balance,
+        ) -> DispatchResultWithPostInfo;
+
+        fn remove_liquidity_one_coin(
+            who: &Self::AccountId,
+            pool_id: PoolId,
+            token_amount: Self::Balance,
+            i: PoolTokenIndex,
+            min_amount: Self::Balance,
+        ) -> DispatchResultWithPostInfo;
+
+        fn get_dy(
+            pool_id: PoolId,
+            i: PoolTokenIndex,
+            j: PoolTokenIndex,
+            dx: Self::Balance,
+        ) -> Result<Self::Balance, DispatchError>;
+
+        fn get_virtual_price(pool_id: PoolId) -> Result<Self::Balance, DispatchError>;
     }
 }
 
