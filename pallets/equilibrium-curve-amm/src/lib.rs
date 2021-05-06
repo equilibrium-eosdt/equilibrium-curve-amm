@@ -22,9 +22,13 @@
 //! - See original [Curve pool-template](https://github.com/curvefi/curve-contract/tree/master/contracts/pool-templates/base) source code this pallet is based on.
 //! - See additional description about `get_y` function internals in [Deducing get_y formulas from StableSwap invariant](https://github.com/equilibrium-eosdt/equilibrium-curve-amm/blob/master/docs/deducing-get_y-formulas.pdf) paper.
 //!
-//! ## Setup
+//! ## Integration Into a Chain
 //!
-//! See [this guide](https://github.com/equilibrium-eosdt/equilibrium-curve-amm/blob/master/docs/GUIDE.md).
+//! See [Integration Guide](https://github.com/equilibrium-eosdt/equilibrium-curve-amm/blob/master/docs/INTEGRATION.md).
+//!
+//! ## Usage
+//!
+//! The `equilibrium-curve-amm` pallet provides its functionality to other pallets through [`CurveAmm`](traits::CurveAmm) trait implementation.
 
 #![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -55,20 +59,18 @@ use traits::{Assets, CheckedConvert};
 
 #[frame_support::pallet]
 pub mod pallet {
-    use super::{traits::Assets, traits::CheckedConvert, PoolId, PoolInfo, PoolTokenIndex};
+    use super::{traits::CheckedConvert, PoolId, PoolInfo, PoolTokenIndex};
     use crate::traits::CurveAmm;
     use frame_support::{
-        dispatch::{Codec, DispatchResult, DispatchResultWithPostInfo},
+        dispatch::{Codec, DispatchResultWithPostInfo},
         pallet_prelude::*,
-        traits::{Currency, ExistenceRequirement, OnUnbalanced, WithdrawReasons},
+        traits::{Currency, OnUnbalanced},
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{
-        AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert,
+        CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert,
     };
     use sp_runtime::{ModuleId, Permill};
-    use sp_std::collections::btree_set::BTreeSet;
-    use sp_std::iter::FromIterator;
     use sp_std::prelude::*;
 
     /// Config of Equilibrium Curve Amm pallet
@@ -77,9 +79,9 @@ pub mod pallet {
         /// The overarching event type.
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-        /// Identificator type of Asset
+        /// The asset ID type
         type AssetId: Parameter + Ord + Copy;
-        /// The balance of an account
+        /// The balance type of an account
         type Balance: Parameter + Codec + Copy + Ord;
         /// External implementation for required opeartions with assets
         type Assets: super::traits::Assets<Self::AssetId, Self::Balance, Self::AccountId>;
@@ -96,7 +98,7 @@ pub mod pallet {
         #[pallet::constant]
         type ModuleId: Get<ModuleId>;
 
-        /// Number type for underlying calculations
+        /// The number type for underlying calculations
         type Number: Parameter + CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + Copy + Eq + Ord;
         /// Value that represents precision used for fixed-point iteration method
         type Precision: Get<Self::Number>;
@@ -112,7 +114,7 @@ pub mod pallet {
     #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
 
-    /// Current number of pools
+    /// Current number of pools (also ID for the next created pool)
     #[pallet::storage]
     #[pallet::getter(fn pool_count)]
     pub type PoolCount<T: Config> = StorageValue<_, PoolId, ValueQuery>;
@@ -199,7 +201,7 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Creates pool, taking creation fee from the caller
+        /// Creates a pool, taking a creation fee from the caller
         #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
         pub fn create_pool(
             origin: OriginFor<T>,
@@ -212,7 +214,7 @@ pub mod pallet {
             <Self as CurveAmm>::create_pool(&who, assets, amplification, fee, admin_fee)
         }
 
-        /// Deposit coins into the pool.
+        /// Deposit coins into the pool
         /// `amounts` - list of amounts of coins to deposit,
         /// `min_mint_amount` - minimum amout of LP tokens to mint from the deposit.
         #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
@@ -273,7 +275,7 @@ pub mod pallet {
             <Self as CurveAmm>::remove_liquidity_imbalance(&who, pool_id, amounts, max_burn_amount)
         }
 
-        /// Withdraw a signe coin from the pool.
+        /// Withdraw a single coin from the pool.
         /// `token_amount` - amount of LP tokens to burn in the withdrawal,
         /// `i` - index value of the coin to withdraw,
         /// `min_amount` - minimum amount of coin to receive.
@@ -1480,15 +1482,24 @@ pub mod traits {
         fn convert(a: A) -> Option<B>;
     }
 
+    /// Provides functionality of the `equilibrium-curve-amm` pallet for other pallets.
     pub trait CurveAmm {
+        /// The asset ID type
         type AssetId;
+        /// The number type for underlying calculations
         type Number;
+        /// The balance type of an account
         type Balance;
+        /// The user account identifier type for the runtime
         type AccountId;
 
+        /// Current number of pools (also ID for the next created pool)
         fn pool_count() -> PoolId;
+
+        /// Information about the pool with the specified `id`
         fn pool(id: PoolId) -> Option<PoolInfo<Self::AssetId, Self::Number, Self::Balance>>;
 
+        /// Creates a pool, taking a creation fee from the caller
         fn create_pool(
             who: &Self::AccountId,
             assets: Vec<Self::AssetId>,
@@ -1497,6 +1508,9 @@ pub mod traits {
             admin_fee: Permill,
         ) -> DispatchResultWithPostInfo;
 
+        /// Deposit coins into the pool
+        /// `amounts` - list of amounts of coins to deposit,
+        /// `min_mint_amount` - minimum amout of LP tokens to mint from the deposit.
         fn add_liquidity(
             who: &Self::AccountId,
             pool_id: PoolId,
@@ -1504,6 +1518,11 @@ pub mod traits {
             min_mint_amount: Self::Balance,
         ) -> DispatchResultWithPostInfo;
 
+        /// Perform an exchange between two coins.
+        /// `i` - index value of the coin to send,
+        /// `j` - index value of the coin to recieve,
+        /// `dx` - amount of `i` being exchanged,
+        /// `min_dy` - minimum amount of `j` to receive.
         fn exchange(
             who: &Self::AccountId,
             pool_id: PoolId,
@@ -1513,6 +1532,10 @@ pub mod traits {
             min_dy: Self::Balance,
         ) -> DispatchResultWithPostInfo;
 
+        /// Withdraw coins from the pool.
+        /// Withdrawal amount are based on current deposit ratios.
+        /// `amount` - quantity of LP tokens to burn in the withdrawal,
+        /// `min_amounts` - minimum amounts of underlying coins to receive.
         fn remove_liquidity(
             who: &Self::AccountId,
             pool_id: PoolId,
@@ -1520,6 +1543,9 @@ pub mod traits {
             min_amounts: Vec<Self::Balance>,
         ) -> DispatchResultWithPostInfo;
 
+        /// Withdraw coins from the pool in an imbalanced amount.
+        /// `amounts` - list of amounts of underlying coins to withdraw,
+        /// `max_burn_amount` - maximum amount of LP token to burn in the withdrawal.
         fn remove_liquidity_imbalance(
             who: &Self::AccountId,
             pool_id: PoolId,
@@ -1527,6 +1553,10 @@ pub mod traits {
             max_burn_amount: Self::Balance,
         ) -> DispatchResultWithPostInfo;
 
+        /// Withdraw a single coin from the pool.
+        /// `token_amount` - amount of LP tokens to burn in the withdrawal,
+        /// `i` - index value of the coin to withdraw,
+        /// `min_amount` - minimum amount of coin to receive.
         fn remove_liquidity_one_coin(
             who: &Self::AccountId,
             pool_id: PoolId,
@@ -1535,6 +1565,7 @@ pub mod traits {
             min_amount: Self::Balance,
         ) -> DispatchResultWithPostInfo;
 
+        /// Calculates the exchange outcome `dy` for a given `i`, `j` and `dx` values.
         fn get_dy(
             pool_id: PoolId,
             i: PoolTokenIndex,
@@ -1542,6 +1573,7 @@ pub mod traits {
             dx: Self::Balance,
         ) -> Result<Self::Balance, DispatchError>;
 
+        /// The current virtual price of the pool LP token.
         fn get_virtual_price(pool_id: PoolId) -> Result<Self::Balance, DispatchError>;
     }
 }

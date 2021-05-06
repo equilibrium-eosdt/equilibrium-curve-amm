@@ -61,7 +61,9 @@ Now you can start the development chain:
 cargo run --bin node --dev
 ```
 
-### Connecting Explorer
+## Connecting to the Node
+
+### Polkadot.js Explorer
 
 It can be very useful to connect UI to the node you just started.
 
@@ -79,9 +81,10 @@ Follow these steps to register required custom types:
 Example client connects to the clean dev node and performs various operations with `equilibrium-curve-amm` pallet.
 See [this readme](client/README.md) for details.
 
-## Adding Pallet to Your Chain
+## Using the Pallet
 
-See dedicated [guide](docs/GUIDE.md).
+- See [Integration Guide](docs/INTEGRATION.md) for information on how to integrate `equilibrium-curve-amm` pallet into your chain.
+- See [Client API](client/README.md#client-api) for how to use the pallet from the client perspective.
 
 ## Development Roadmap
 
