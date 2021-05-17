@@ -1452,6 +1452,7 @@ pub mod traits {
     use crate::{PoolId, PoolInfo, PoolTokenIndex};
     use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo};
     use sp_runtime::Permill;
+    use sp_std::vec::Vec;
 
     /// Pallet equilibrium_curve_amm should interact with custom Assets.
     /// In order to do this it relies on `Assets` trait implementation.
