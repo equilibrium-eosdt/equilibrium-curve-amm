@@ -58,7 +58,7 @@ cargo run --bin node purge-chain --dev
 Now you can start the development chain:
 
 ```bash
-cargo run --bin node --dev
+cargo run -p node -- --dev
 ```
 
 ## Connecting to the Node
