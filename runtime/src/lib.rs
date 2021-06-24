@@ -378,7 +378,7 @@ pub struct FrameAssets;
 /// expects that asset id will be provided by the caller. The only thing we can do here
 /// is to guess asset id and hope that it is not in use.
 impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for FrameAssets {
-    fn create_asset() -> Result<AssetId, DispatchError> {
+    fn create_asset(_pool_id: equilibrium_curve_amm::PoolId) -> Result<AssetId, DispatchError> {
         fn random_u32_seed() -> u32 {
             let seed = RandomnessCollectiveFlip::random_seed();
             let seed_bytes = seed.as_fixed_bytes();

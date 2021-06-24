@@ -775,7 +775,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 // No PoolInfo can have key greater or equal to PoolCount
                 ensure!(maybe_pool_info.is_none(), Error::<T>::InconsistentStorage);
 
-                let asset = T::Assets::create_asset().map_err(|_| Error::<T>::AssetNotCreated)?;
+                let asset = T::Assets::create_asset(pool_id).map_err(|_| Error::<T>::AssetNotCreated)?;
 
                 let balances =
                     vec![Self::convert_number_to_balance(Self::get_number(0)); assets.len()];
@@ -1458,7 +1458,7 @@ pub mod traits {
     /// In order to do this it relies on `Assets` trait implementation.
     pub trait Assets<AssetId, Balance, AccountId> {
         /// Creates new asset
-        fn create_asset() -> Result<AssetId, DispatchError>;
+        fn create_asset(pool_id: PoolId) -> Result<AssetId, DispatchError>;
         /// Mint tokens for the specified asset
         fn mint(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult;
         /// Burn tokens for the specified asset

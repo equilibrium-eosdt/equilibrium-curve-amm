@@ -139,7 +139,7 @@ thread_local! {
 
 pub struct TestAssets;
 impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for TestAssets {
-    fn create_asset() -> Result<AssetId, DispatchError> {
+    fn create_asset(_pool_id: crate::PoolId) -> Result<AssetId, DispatchError> {
         ASSETS.with(|d| -> Result<AssetId, DispatchError> {
             let mut d = d.borrow_mut();
             let id =
