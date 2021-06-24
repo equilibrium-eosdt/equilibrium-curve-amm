@@ -127,7 +127,7 @@ Here is just a definition of an `Assets` trait that each chain should implement 
 /// In order to do this it relies on `Assets` trait implementation.
 pub trait Assets<AssetId, Balance, AccountId> {
     /// Creates new asset
-    fn create_asset() -> Result<AssetId, DispatchError>;
+    fn create_asset(poolId: PoolId) -> Result<AssetId, DispatchError>;
     /// Mint tokens for the specified asset
     fn mint(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult;
     /// Burn tokens for the specified asset

@@ -138,8 +138,10 @@ thread_local! {
 }
 
 pub struct TestAssets;
-impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for TestAssets {
-    fn create_asset() -> Result<AssetId, DispatchError> {
+
+impl TestAssets {
+    // general method for assets creation
+    pub fn create_asset() -> Result<AssetId, DispatchError> {
         ASSETS.with(|d| -> Result<AssetId, DispatchError> {
             let mut d = d.borrow_mut();
             let id =
@@ -151,6 +153,12 @@ impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for TestAssets {
 
             Ok(id)
         })
+    }
+}
+
+impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for TestAssets {
+    fn create_asset(_pool_id: crate::PoolId) -> Result<AssetId, DispatchError> {
+        Self::create_asset()
     }
 
     fn mint(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult {
