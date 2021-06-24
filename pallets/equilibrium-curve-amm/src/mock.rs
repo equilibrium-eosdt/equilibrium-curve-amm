@@ -140,7 +140,8 @@ thread_local! {
 pub struct TestAssets;
 
 impl TestAssets {
-    pub fn create_pool_asset() -> Result<AssetId, DispatchError> {
+    // general method for assets creation
+    pub fn create_asset() -> Result<AssetId, DispatchError> {
         ASSETS.with(|d| -> Result<AssetId, DispatchError> {
             let mut d = d.borrow_mut();
             let id =
@@ -157,17 +158,7 @@ impl TestAssets {
 
 impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for TestAssets {
     fn create_asset(_pool_id: crate::PoolId) -> Result<AssetId, DispatchError> {
-        ASSETS.with(|d| -> Result<AssetId, DispatchError> {
-            let mut d = d.borrow_mut();
-            let id =
-                AssetId::try_from(d.len()).map_err(|_| DispatchError::Other(&"Too large id"))?;
-            d.push(Asset {
-                total: 0,
-                balances: HashMap::new(),
-            });
-
-            Ok(id)
-        })
+        Self::create_asset()
     }
 
     fn mint(asset: AssetId, dest: &AccountId, amount: Balance) -> DispatchResult {
