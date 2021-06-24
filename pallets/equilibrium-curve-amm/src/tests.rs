@@ -308,8 +308,8 @@ mod curve {
         let base_amount: Balance = 1_000_000;
 
         // Create pool tokens
-        let coin0 = TestAssets::create_asset(Default::default()).unwrap();
-        let coin1 = TestAssets::create_asset(Default::default()).unwrap();
+        let coin0 = TestAssets::create_pool_asset().unwrap();
+        let coin1 = TestAssets::create_pool_asset().unwrap();
 
         assert_eq!(coin0, 0);
         assert_eq!(coin1, 1);
@@ -390,8 +390,8 @@ mod curve {
         let base_amount: Balance = 1_000_000;
 
         // Create pool tokens
-        let coin0 = TestAssets::create_asset(Default::default()).unwrap();
-        let coin1 = TestAssets::create_asset(Default::default()).unwrap();
+        let coin0 = TestAssets::create_pool_asset().unwrap();
+        let coin1 = TestAssets::create_pool_asset().unwrap();
 
         assert_eq!(coin0, 0);
         assert_eq!(coin1, 1);
@@ -457,8 +457,8 @@ mod curve {
         let base_amount: Balance = 1_000_000;
 
         // Create pool tokens
-        let coin0 = TestAssets::create_asset(Default::default()).unwrap();
-        let coin1 = TestAssets::create_asset(Default::default()).unwrap();
+        let coin0 = TestAssets::create_pool_asset().unwrap();
+        let coin1 = TestAssets::create_pool_asset().unwrap();
 
         assert_eq!(coin0, 0);
         assert_eq!(coin1, 1);
