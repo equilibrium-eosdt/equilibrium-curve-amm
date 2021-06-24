@@ -45,7 +45,7 @@ frame-benchmarking = { version = "3.0.0", default-features = false, git = 'https
 frame-system-benchmarking = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq", optional = true }
 hex-literal = { version = "0.3.1", optional = true }
 
-equilibrium-curve-amm = { version = "0.1.0", default-features = false, path = "../pallets/equilibrium-curve-amm", package = "equilibrium-curve-amm" }
+equilibrium-curve-amm = { version = "0.1.1", default-features = false, path = "../pallets/equilibrium-curve-amm", package = "equilibrium-curve-amm" }
 
 [build-dependencies]
 substrate-wasm-builder = { version = "4.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
