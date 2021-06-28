@@ -55,6 +55,7 @@ pub use sp_runtime::{Perbill, Permill};
 
 /// Import the equilibrium_curve_amm pallet.
 pub use equilibrium_curve_amm;
+use equilibrium_curve_amm::traits::CurveAmm as CurveAmmTrait;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -468,6 +469,19 @@ impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for Fram
 
     fn total_issuance(asset: AssetId) -> Balance {
         Assets::total_supply(asset)
+    }
+
+    fn withdraw_admin_fees(
+        pool_id: equilibrium_curve_amm::PoolId,
+        amounts: impl Iterator<Item = Balance>,
+    ) -> DispatchResult {
+        let pool = CurveAmm::pool(pool_id).ok_or(DispatchError::Other(&"Pool not found"))?;
+        let assets = pool.assets;
+
+        for (asset, fee) in assets.into_iter().zip(amounts) {
+            Self::burn(asset, &CurveAmmModuleId::get().into_account(), fee);
+        }
+        Ok(())
     }
 }
 
