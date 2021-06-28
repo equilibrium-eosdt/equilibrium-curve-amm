@@ -334,6 +334,10 @@ impl OnUnbalanced<<pallet_balances::Pallet<Runtime> as Currency<AccountId>>::Neg
 {
 }
 
+impl equilibrium_curve_amm::traits::OnUnbalancedAdminFee<AssetId, Balance> for EmptyUnbalanceHandler{
+    fn on_unbalanced(_asset_id: u32, _amount: u64) { }
+}
+
 pub struct FixedU128Convert;
 
 impl Convert<Permill, FixedU128> for FixedU128Convert {
@@ -480,6 +484,7 @@ impl equilibrium_curve_amm::Config for Runtime {
     type CreationFee = CreationFee;
     type Assets = FrameAssets;
     type OnUnbalanced = EmptyUnbalanceHandler;
+    type OnUnbalancedAdminFee = EmptyUnbalanceHandler;
     type ModuleId = CurveAmmModuleId;
 
     type Number = Number;

@@ -1,5 +1,5 @@
 use crate as curve_amm;
-use crate::traits::CheckedConvert;
+use crate::traits::{CheckedConvert, OnUnbalancedAdminFee};
 use frame_support::{
     dispatch::{DispatchError, DispatchResult},
     parameter_types,
@@ -253,6 +253,10 @@ type Imbalance = <pallet_balances::Pallet<Test> as Currency<AccountId>>::Negativ
 
 impl OnUnbalanced<Imbalance> for EmptyUnbalanceHandler {}
 
+impl OnUnbalancedAdminFee<AssetId, Balance> for EmptyUnbalanceHandler{
+    fn on_unbalanced(_asset_id: i64, _amount: u64) { }
+}
+
 impl curve_amm::Config for Test {
     type Event = Event;
     type AssetId = i64;
@@ -261,6 +265,7 @@ impl curve_amm::Config for Test {
     type CreationFee = CreationFee;
     type Assets = TestAssets;
     type OnUnbalanced = EmptyUnbalanceHandler;
+    type OnUnbalancedAdminFee = EmptyUnbalanceHandler;
     type ModuleId = CurveAmmModuleId;
 
     type Number = Number;
