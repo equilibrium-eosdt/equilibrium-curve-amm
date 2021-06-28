@@ -93,6 +93,7 @@ fn create_pool_pool_saved_to_storage() {
         assert_eq!(
             CurveAmm::pools(0),
             Some(PoolInfo {
+                owner: 1,
                 pool_asset: 0,
                 assets: vec![0, 1],
                 amplification: FixedU128::from(1u128),
@@ -508,6 +509,16 @@ mod curve {
             base_amount,
             initial_amounts,
         }
+    }
+
+    pub fn get_admin_fees(swap: AccountId, coins: &[AssetId]) -> Vec<Balance> {
+        let balances = CurveAmm::pools(0).unwrap().balances;
+        coins
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(i, coin)| TestAssets::balance(coin, &swap) - balances[i])
+            .collect()
     }
 
     mod test_add_liquidity {
@@ -1678,16 +1689,6 @@ mod curve {
         use sp_std::cmp::max;
         use sp_std::convert::TryFrom;
 
-        fn get_admin_balances(swap: AccountId, coins: &[AssetId]) -> Vec<Balance> {
-            let balances = CurveAmm::pools(0).unwrap().balances;
-            coins
-                .iter()
-                .copied()
-                .enumerate()
-                .map(|(i, coin)| TestAssets::balance(coin, &swap) - balances[i])
-                .collect()
-        }
-
         fn approx(actual: FixedI64, expected: FixedI64, rel: FixedI64) -> bool {
             let delta = if expected > actual {
                 expected - actual
@@ -1746,7 +1747,7 @@ mod curve {
                             assert!(received < FixedI64::one() - fee.into());
 
                             let expected_admin_fee = FixedI64::one() * fee.into() * admin_fee.into();
-                            let admin_fees = get_admin_balances(swap, &coins);
+                            let admin_fees = get_admin_fees(swap, &coins);
 
                             if expected_admin_fee >= FixedI64::from_inner(1) {
                                 assert!(approx(
@@ -2225,6 +2226,62 @@ mod curve {
         exchange_tests! {
             test_exchange_0_1: (0, 1),
             test_exchange_1_0: (1, 0),
+        }
+    }
+
+    mod test_withdraw_admin_fees {
+        use super::*;
+        use crate::mock::new_test_ext;
+        use crate::tests::curve::{
+            init_add_initial_liquidity_and_mint_bob, AddInitialLiquidityAndMintBobContext,
+        };
+        use crate::PoolTokenIndex;
+        use sp_runtime::Permill;
+
+        #[test]
+        fn test_withdraw_admin_fees() {
+            new_test_ext().execute_with(|| {
+                let admin_fee = Permill::from_percent(50);
+                let sending = 0;
+                let receiving = 1;
+
+                let AddInitialLiquidityAndMintBobContext {
+                    bob,
+                    pool,
+                    swap,
+                    coins,
+                    ..
+                } = init_add_initial_liquidity_and_mint_bob(admin_fee, admin_fee);
+
+                let amount = BALANCE_ONE;
+
+                assert_ok!(CurveAmm::exchange(
+                    Origin::signed(bob),
+                    pool,
+                    sending as PoolTokenIndex,
+                    receiving as PoolTokenIndex,
+                    amount,
+                    0
+                ));
+
+                assert!(
+                    get_admin_fees(swap, &coins)
+                        .iter()
+                        .filter(|b| **b > 0)
+                        .count()
+                        > 0
+                );
+
+                assert_ok!(CurveAmm::withdraw_admin_fees(Origin::signed(bob), pool));
+
+                assert_eq!(
+                    get_admin_fees(swap, &coins)
+                        .iter()
+                        .filter(|b| **b > 0)
+                        .count(),
+                    0
+                );
+            });
         }
     }
 }

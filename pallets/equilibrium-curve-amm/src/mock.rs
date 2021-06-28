@@ -1,5 +1,5 @@
 use crate as curve_amm;
-use crate::traits::CheckedConvert;
+use crate::traits::{CheckedConvert, CurveAmm as CurveAmmTrait};
 use frame_support::{
     dispatch::{DispatchError, DispatchResult},
     parameter_types,
@@ -11,7 +11,7 @@ use sp_runtime::traits::Convert;
 use sp_runtime::Permill;
 use sp_runtime::{
     testing::Header,
-    traits::{BlakeTwo256, IdentityLookup},
+    traits::{BlakeTwo256, IdentityLookup, AccountIdConversion},
     ModuleId,
 };
 use sp_runtime::{FixedI64, FixedPointNumber, FixedU128};
@@ -127,6 +127,7 @@ impl Convert<FixedU128, Balance> for FixedU128Convert {
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use crate::PoolId;
 
 pub struct Asset {
     total: Balance,
@@ -244,6 +245,39 @@ impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for TestAssets {
                 d.get(i).map(|a| a.total)
             })
             .unwrap_or(0)
+    }
+
+    fn withdraw_admin_fees(pool_id: PoolId, amounts: impl Iterator<Item = Balance>) -> DispatchResult {
+        let pool = CurveAmm::pool(pool_id).ok_or(DispatchError::Other(&"Pool not found"))?;
+        let assets = pool.assets;
+
+        ASSETS.with(|d| -> DispatchResult {
+
+            for (asset, amount) in assets.into_iter().zip(amounts) {
+                let i =
+                    usize::try_from(asset).map_err(|_| DispatchError::Other(&"Index out of range"))?;
+                let mut d = d.borrow_mut();
+                let a = d
+                    .get_mut(i)
+                    .ok_or(DispatchError::Other(&"Index out of range"))?;
+
+                let dest = CurveAmmModuleId::get().into_account();
+                let x = a
+                    .balances
+                    .get_mut(&dest)
+                    .ok_or(DispatchError::Other(&"Not found"))?;
+
+                *x = x
+                    .checked_sub(amount)
+                    .ok_or(DispatchError::Other(&"Overflow"))?;
+
+                a.total = a
+                    .total
+                    .checked_sub(amount)
+                    .ok_or(DispatchError::Other(&"Overflow"))?;
+            }
+            Ok(())
+        })
     }
 }
 
