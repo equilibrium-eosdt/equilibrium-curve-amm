@@ -55,6 +55,7 @@ pub use sp_runtime::{Perbill, Permill};
 
 /// Import the equilibrium_curve_amm pallet.
 pub use equilibrium_curve_amm;
+use equilibrium_curve_amm::traits::CurveAmm as CurveAmmTrait;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -334,10 +335,6 @@ impl OnUnbalanced<<pallet_balances::Pallet<Runtime> as Currency<AccountId>>::Neg
 {
 }
 
-impl equilibrium_curve_amm::traits::OnUnbalancedAdminFee<AssetId, Balance> for EmptyUnbalanceHandler{
-    fn on_unbalanced(_asset_id: u32, _amount: u64) { }
-}
-
 pub struct FixedU128Convert;
 
 impl Convert<Permill, FixedU128> for FixedU128Convert {
@@ -473,6 +470,19 @@ impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for Fram
     fn total_issuance(asset: AssetId) -> Balance {
         Assets::total_supply(asset)
     }
+
+    fn withdraw_admin_fees(
+        pool_id: equilibrium_curve_amm::PoolId,
+        amounts: impl Iterator<Item = Balance>,
+    ) -> DispatchResult {
+        let pool = CurveAmm::pool(pool_id).ok_or(DispatchError::Other(&"Pool not found"))?;
+        let assets = pool.assets;
+
+        for (asset, fee) in assets.into_iter().zip(amounts) {
+            Self::burn(asset, &CurveAmmModuleId::get().into_account(), fee);
+        }
+        Ok(())
+    }
 }
 
 /// Configure the pallet equilibrium_curve_amm in pallets/equilibrium_curve_amm.
@@ -484,7 +494,6 @@ impl equilibrium_curve_amm::Config for Runtime {
     type CreationFee = CreationFee;
     type Assets = FrameAssets;
     type OnUnbalanced = EmptyUnbalanceHandler;
-    type OnUnbalancedAdminFee = EmptyUnbalanceHandler;
     type ModuleId = CurveAmmModuleId;
 
     type Number = Number;

@@ -43,7 +43,7 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
-use crate::traits::{CurveAmm, OnUnbalancedAdminFee};
+use crate::traits::CurveAmm;
 use frame_support::codec::{Decode, Encode};
 use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo};
 use frame_support::ensure;
@@ -60,16 +60,14 @@ use traits::{Assets, CheckedConvert};
 #[frame_support::pallet]
 pub mod pallet {
     use super::{traits::CheckedConvert, PoolId, PoolInfo, PoolTokenIndex};
-    use crate::traits::{CurveAmm, OnUnbalancedAdminFee};
+    use crate::traits::CurveAmm;
     use frame_support::{
         dispatch::{Codec, DispatchResultWithPostInfo},
         pallet_prelude::*,
         traits::{Currency, OnUnbalanced},
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{
-        CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert,
-    };
+    use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert};
     use sp_runtime::{ModuleId, Permill};
     use sp_std::prelude::*;
 
@@ -94,8 +92,6 @@ pub mod pallet {
         type OnUnbalanced: OnUnbalanced<
             <Self::Currency as Currency<Self::AccountId>>::NegativeImbalance,
         >;
-        /// What to do with admin fee (burn, transfer to treasury, etc)
-        type OnUnbalancedAdminFee: OnUnbalancedAdminFee<Self::AssetId, Self::Balance>;
         /// Module account
         #[pallet::constant]
         type ModuleId: Get<ModuleId>;
@@ -124,8 +120,12 @@ pub mod pallet {
     /// Existing pools
     #[pallet::storage]
     #[pallet::getter(fn pools)]
-    pub type Pools<T: Config> =
-        StorageMap<_, Blake2_128Concat, PoolId, PoolInfo<T::AccountId, T::AssetId, T::Number, T::Balance>>;
+    pub type Pools<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        PoolId,
+        PoolInfo<T::AccountId, T::AssetId, T::Number, T::Balance>,
+    >;
 
     /// Event type for Equilibrium Curve AMM pallet
     #[pallet::event]
@@ -750,7 +750,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
         PoolCount::<T>::get()
     }
 
-    fn pool(id: PoolId) -> Option<PoolInfo<Self::AccountId, Self::AssetId, Self::Number, Self::Balance>> {
+    fn pool(
+        id: PoolId,
+    ) -> Option<PoolInfo<Self::AccountId, Self::AssetId, Self::Number, Self::Balance>> {
         Pools::<T>::get(id)
     }
 
@@ -789,7 +791,8 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 // No PoolInfo can have key greater or equal to PoolCount
                 ensure!(maybe_pool_info.is_none(), Error::<T>::InconsistentStorage);
 
-                let asset = T::Assets::create_asset(pool_id).map_err(|_| Error::<T>::AssetNotCreated)?;
+                let asset =
+                    T::Assets::create_asset(pool_id).map_err(|_| Error::<T>::AssetNotCreated)?;
 
                 let balances =
                     vec![Self::convert_number_to_balance(Self::get_number(0)); assets.len()];
@@ -1460,42 +1463,38 @@ impl<T: Config> CurveAmm for Pallet<T> {
         Pallet::<T>::get_virtual_price(pool_id)
     }
 
-    fn withdraw_admin_fees(
-        who: &Self::AccountId,
-        pool_id: PoolId,
-    ) -> DispatchResultWithPostInfo {
+    fn withdraw_admin_fees(who: &Self::AccountId, pool_id: PoolId) -> DispatchResultWithPostInfo {
         let pool = Self::pool(pool_id).ok_or(Error::<T>::PoolNotFound)?;
         let n_coins = pool.assets.len();
 
-        let mut burned = Vec::with_capacity(n_coins);
+        ensure!(
+            n_coins == pool.balances.len(),
+            Error::<T>::InconsistentStorage
+        );
+
         let module_account_id = T::ModuleId::get().into_account();
-        let zero = Self::get_number(0);
 
-        for i in 0..n_coins {
-            let asset_id = pool.assets[i];
-            let n_admin_fee = {
-                let n_module_account_balance = Self::convert_balance_to_number(
-                    T::Assets::balance(asset_id, &module_account_id)
-                );
-                let n_pool_balance = Self::convert_balance_to_number(pool.balances[i]);
-                n_module_account_balance.checked_sub(&n_pool_balance).ok_or(Error::<T>::Math)?
-            };
+        let assets = pool.assets;
+        let balances = pool.balances;
 
-            if n_admin_fee > zero {
-                let amount = Self::convert_number_to_balance(n_admin_fee);
-                T::Assets::burn(
-                    asset_id,
-                    &module_account_id,
-                    amount
-                )?;
+        let admin_fees = assets
+            .into_iter()
+            .zip(balances.into_iter())
+            .map(|(a, b)| {
+                let n_module_account_balance =
+                    Self::convert_balance_to_number(T::Assets::balance(a, &module_account_id));
+                let n_pool_balance = Self::convert_balance_to_number(b);
 
-                T::OnUnbalancedAdminFee::on_unbalanced(asset_id, amount);
+                let fee = n_module_account_balance
+                    .checked_sub(&n_pool_balance)
+                    .ok_or(Error::<T>::Math)?;
 
-                burned.push(amount);
-            }
-        }
+                Ok(Self::convert_number_to_balance(fee))
+            })
+            .collect::<Result<Vec<Self::Balance>, DispatchError>>()?;
 
-        Self::deposit_event(Event::WithdrawAdminFees(who.clone(), pool_id, burned));
+        T::Assets::withdraw_admin_fees(pool_id, admin_fees.iter().copied())?;
+        Self::deposit_event(Event::WithdrawAdminFees(who.clone(), pool_id, admin_fees));
 
         Ok(().into())
     }
@@ -1525,6 +1524,11 @@ pub mod traits {
             dest: &AccountId,
             amount: Balance,
         ) -> DispatchResult;
+        /// Withdraw admin fees
+        fn withdraw_admin_fees(
+            pool_id: PoolId,
+            amounts: impl Iterator<Item = Balance>,
+        ) -> DispatchResult;
         /// Checks the balance for the specified asset
         fn balance(asset: AssetId, who: &AccountId) -> Balance;
         /// Returns total issuance of the specified asset
@@ -1536,12 +1540,6 @@ pub mod traits {
     pub trait CheckedConvert<A, B> {
         /// Make a conversion
         fn convert(a: A) -> Option<B>;
-    }
-
-    /// Handler trait for admin fee. The trait that should be implemented on a runtime side.
-    pub trait OnUnbalancedAdminFee<AssetId, Balance> {
-        /// Handler for admin fee balance of asset `asset_id`
-        fn on_unbalanced(asset_id: AssetId, amount: Balance);
     }
 
     /// Provides functionality of the `equilibrium-curve-amm` pallet for other pallets.
@@ -1559,7 +1557,9 @@ pub mod traits {
         fn pool_count() -> PoolId;
 
         /// Information about the pool with the specified `id`
-        fn pool(id: PoolId) -> Option<PoolInfo<Self::AccountId, Self::AssetId, Self::Number, Self::Balance>>;
+        fn pool(
+            id: PoolId,
+        ) -> Option<PoolInfo<Self::AccountId, Self::AssetId, Self::Number, Self::Balance>>;
 
         /// Creates a pool, taking a creation fee from the caller
         fn create_pool(
@@ -1657,17 +1657,17 @@ pub type PoolId = u32;
 #[derive(Encode, Decode, Clone, Default, PartialEq, Eq, Debug)]
 pub struct PoolInfo<AccountId, AssetId, Number, Balance> {
     /// Owner of pool
-    owner: AccountId,
+    pub owner: AccountId,
     /// LP multiasset
-    pool_asset: AssetId,
+    pub pool_asset: AssetId,
     /// List of multiassets supported by the pool
-    assets: Vec<AssetId>,
+    pub assets: Vec<AssetId>,
     /// Initial amplification coefficient (leverage)
-    amplification: Number,
+    pub amplification: Number,
     /// Amount of the fee pool charges for the exchange
-    fee: Permill,
+    pub fee: Permill,
     /// Amount of the admin fee pool charges for the exchange
-    admin_fee: Permill,
+    pub admin_fee: Permill,
     /// Current balances excluding admin_fee
-    balances: Vec<Balance>,
+    pub balances: Vec<Balance>,
 }

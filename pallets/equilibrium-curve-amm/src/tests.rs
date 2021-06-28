@@ -2232,9 +2232,11 @@ mod curve {
     mod test_withdraw_admin_fees {
         use super::*;
         use crate::mock::new_test_ext;
-        use sp_runtime::Permill;
+        use crate::tests::curve::{
+            init_add_initial_liquidity_and_mint_bob, AddInitialLiquidityAndMintBobContext,
+        };
         use crate::PoolTokenIndex;
-        use crate::tests::curve::{init_add_initial_liquidity_and_mint_bob, AddInitialLiquidityAndMintBobContext};
+        use sp_runtime::Permill;
 
         #[test]
         fn test_withdraw_admin_fees() {
@@ -2254,29 +2256,31 @@ mod curve {
                 let amount = BALANCE_ONE;
 
                 assert_ok!(CurveAmm::exchange(
-                                Origin::signed(bob),
-                                pool,
-                                sending as PoolTokenIndex,
-                                receiving as PoolTokenIndex,
-                                amount,
-                                0
-                            ));
-
-                assert!(get_admin_fees(swap, &coins)
-                    .iter()
-                    .filter(|b| **b > 0)
-                    .count() > 0
-                );
-
-                assert_ok!(CurveAmm::withdraw_admin_fees(
                     Origin::signed(bob),
-                    pool
+                    pool,
+                    sending as PoolTokenIndex,
+                    receiving as PoolTokenIndex,
+                    amount,
+                    0
                 ));
 
-                assert_eq!(get_admin_fees(swap, &coins)
-                    .iter()
-                    .filter(|b| **b > 0)
-                    .count(), 0);
+                assert!(
+                    get_admin_fees(swap, &coins)
+                        .iter()
+                        .filter(|b| **b > 0)
+                        .count()
+                        > 0
+                );
+
+                assert_ok!(CurveAmm::withdraw_admin_fees(Origin::signed(bob), pool));
+
+                assert_eq!(
+                    get_admin_fees(swap, &coins)
+                        .iter()
+                        .filter(|b| **b > 0)
+                        .count(),
+                    0
+                );
             });
         }
     }
