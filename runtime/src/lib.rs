@@ -479,7 +479,7 @@ impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for Fram
         let assets = pool.assets;
 
         for (asset, fee) in assets.into_iter().zip(amounts) {
-            Self::burn(asset, &CurveAmmModuleId::get().into_account(), fee);
+            Self::burn(asset, &CurveAmmModuleId::get().into_account(), fee)?;
         }
         Ok(())
     }
