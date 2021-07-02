@@ -775,7 +775,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             Error::<T>::DuplicateAssets
         );
 
-        T::AssetChecker::check(&assets)?;
+        let _ = T::AssetChecker::check(&assets)?;
 
         // Take fee
         let creation_fee = T::CreationFee::get();
