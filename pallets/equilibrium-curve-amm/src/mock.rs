@@ -296,6 +296,7 @@ impl curve_amm::Config for Test {
     type Assets = TestAssets;
     type OnUnbalanced = EmptyUnbalanceHandler;
     type ModuleId = CurveAmmModuleId;
+    type AssetChecker = ();
 
     type Number = Number;
     type Precision = Precision;
