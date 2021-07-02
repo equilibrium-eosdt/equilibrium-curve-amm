@@ -55,12 +55,12 @@ use sp_runtime::Permill;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::iter::FromIterator;
 use sp_std::prelude::*;
-use traits::{Assets, CheckedConvert};
+use traits::{Assets, CheckedConvert, SliceChecker};
 
 #[frame_support::pallet]
 pub mod pallet {
     use super::{traits::CheckedConvert, PoolId, PoolInfo, PoolTokenIndex};
-    use crate::traits::CurveAmm;
+    use crate::traits::{CurveAmm, SliceChecker};
     use frame_support::{
         dispatch::{Codec, DispatchResultWithPostInfo},
         pallet_prelude::*,
@@ -106,6 +106,8 @@ pub mod pallet {
             + Convert<u8, Self::Number>
             + CheckedConvert<usize, Self::Number>
             + Convert<Self::Number, Self::Balance>;
+        /// Provides a way to perform additional asset checks
+        type AssetChecker: SliceChecker<Self::AssetId>;
     }
 
     #[pallet::pallet]
@@ -770,6 +772,8 @@ impl<T: Config> CurveAmm for Pallet<T> {
             unique_assets.len() == assets.len(),
             Error::<T>::DuplicateAssets
         );
+
+        T::AssetChecker::check(&assets)?;
 
         // Take fee
         let creation_fee = T::CreationFee::get();
@@ -1643,6 +1647,18 @@ pub mod traits {
             who: &Self::AccountId,
             pool_id: PoolId,
         ) -> DispatchResultWithPostInfo;
+    }
+
+    /// Checks if all items in the slice are met some condition
+    pub trait SliceChecker<T> {
+        /// Returns `()` if all `items` are met some condition and `DispatchError` otherwise
+        fn check(items: &[T]) -> Result<(), DispatchError>;
+    }
+
+    impl <T> SliceChecker<T> for () {
+        fn check(_items: &[T]) -> Result<(), DispatchError> {
+            Ok(())
+        }
     }
 }
 

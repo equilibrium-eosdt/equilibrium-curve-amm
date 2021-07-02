@@ -499,6 +499,7 @@ impl equilibrium_curve_amm::Config for Runtime {
     type Number = Number;
     type Precision = Precision;
     type Convert = FixedU128Convert;
+    type AssetChecker = ();
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
