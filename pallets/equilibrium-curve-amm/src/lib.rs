@@ -225,7 +225,7 @@ pub mod pallet {
         /// - received token amount `T::Balance`
         /// - actual token supply `T::Balance`
         ///
-        /// \[who, pool_id, burn_amount, dy, token_supply\]
+        /// \[who, pool_id, burn_amount, received_amount, token_supply\]
         RemoveLiquidityOne(T::AccountId, PoolId, T::Balance, T::Balance, T::Balance),
         /// Withdraw admin fees `Vec<T::Balance>` from pool `PoolId` by user `T::AccountId`
         ///
