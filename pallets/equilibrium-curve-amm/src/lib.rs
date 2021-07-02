@@ -200,6 +200,8 @@ pub mod pallet {
         InsufficientFunds,
         /// Specified index is out of range
         IndexOutOfRange,
+        /// The `AssetChecker` can use this error in case it can't provide better error
+        ExternalAssetCheckFailed,
     }
 
     #[pallet::hooks]
