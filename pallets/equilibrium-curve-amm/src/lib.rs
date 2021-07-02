@@ -134,9 +134,25 @@ pub mod pallet {
     #[pallet::metadata(T::AccountId = "AccountId")]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// Pool with specified id created successfully
+        /// Pool with specified id `PoolId` was created successfully by `T::AccountId`.
+        ///
+        /// Included values are:
+        /// - account identifier `T::AccountId`
+        /// - pool identifier `PoolId`
+        ///
+        /// \[who, pool_id\]
         CreatePool(T::AccountId, PoolId),
-        /// Liquidity added into pool
+        /// Liquidity added into the pool `PoolId` by `T::AccountId`.
+        ///
+        /// Included values are:
+        /// - account identifier `T::AccountId`
+        /// - pool identifier `PoolId`
+        /// - added token amounts `Vec<T::Balance>`
+        /// - charged fees `Vec<T::Balance>`
+        /// - actual invariant `T::Balance`
+        /// - actual token supply `T::Balance`
+        ///
+        /// \[who, pool_id, token_amounts, fees, invariant, token_supply\]
         AddLiquidity(
             T::AccountId,
             PoolId,
@@ -145,7 +161,17 @@ pub mod pallet {
             T::Balance,
             T::Balance,
         ),
-        /// Token exchange happened
+        /// Token exchange happened.
+        ///
+        /// Included values are:
+        /// - account identifier `T::AccountId`
+        /// - pool identifier `PoolId`
+        /// - index of sent token `PoolTokenIndex`
+        /// - amount of sent token `T::Balance`
+        /// - index of received token `PoolTokenIndex`
+        /// - amount of received token `T::Balance`
+        ///
+        /// \[who, pool_id, sent_token_index, sent_amount, received_token_index, received_amount\]
         TokenExchange(
             T::AccountId,
             PoolId,
@@ -154,7 +180,16 @@ pub mod pallet {
             PoolTokenIndex,
             T::Balance,
         ),
-        /// Liquidity removed from pool in balanced way
+        /// Liquidity removed from pool `PoolId` by `T::AccountId` in balanced way.
+        ///
+        /// Included values are:
+        /// - account identifier `T::AccountId`
+        /// - pool identifier `PoolId`
+        /// - removed token amounts `Vec<T::Balance>`
+        /// - charged fees `Vec<T::Balance>`
+        /// - actual token supply `T::Balance`
+        ///
+        /// \[who, pool_id, token_amounts, fees, token_supply\]
         RemoveLiquidity(
             T::AccountId,
             PoolId,
@@ -162,7 +197,17 @@ pub mod pallet {
             Vec<T::Balance>,
             T::Balance,
         ),
-        /// Liquidity removed from pool in imbalanced way
+        /// Liquidity removed from pool `PoolId` by `T::AccountId` in imbalanced way.
+        ///
+        /// Included values are:
+        /// - account identifier `T::AccountId`
+        /// - pool identifier `PoolId`
+        /// - removed token amounts `Vec<T::Balance>`
+        /// - charged fees `Vec<T::Balance>`
+        /// - actual invariant `Balance`
+        /// - actual token supply `Balance`
+        ///
+        /// \[who, pool_id, token_amounts, fees, invariant, token_supply\]
         RemoveLiquidityImbalance(
             T::AccountId,
             PoolId,
@@ -171,9 +216,24 @@ pub mod pallet {
             T::Balance,
             T::Balance,
         ),
-        /// Liquidity removed from pool only for one token
+        /// Liquidity removed from pool `PoolId` only for one token.
+        ///
+        /// Included values are:
+        /// - account identifier `T::AccountId`
+        /// - pool identifier `PoolId`
+        /// - removed token amount `T::Balance`
+        /// - received token amount `T::Balance`
+        /// - actual token supply `T::Balance`
+        ///
+        /// \[who, pool_id, burn_amount, received_amount, token_supply\]
         RemoveLiquidityOne(T::AccountId, PoolId, T::Balance, T::Balance, T::Balance),
-        /// Withdraw admin fees
+        /// Withdraw admin fees `Vec<T::Balance>` from pool `PoolId` by user `T::AccountId`
+        ///
+        /// Included values are:
+        /// - account identifier `T::AccountId`
+        /// - pool identifier `PoolId`
+        ///
+        /// [who, pool_id, admin_fees]
         WithdrawAdminFees(T::AccountId, PoolId, Vec<T::Balance>),
     }
 
@@ -1657,7 +1717,7 @@ pub mod traits {
         fn check(items: &[T]) -> Result<(), DispatchError>;
     }
 
-    impl <T> SliceChecker<T> for () {
+    impl<T> SliceChecker<T> for () {
         fn check(_items: &[T]) -> Result<(), DispatchError> {
             Ok(())
         }

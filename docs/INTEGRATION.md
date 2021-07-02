@@ -143,6 +143,8 @@ pub trait Assets<AssetId, Balance, AccountId> {
     fn balance(asset: AssetId, who: &AccountId) -> Balance;
     /// Returns total issuance of the specified asset
     fn total_issuance(asset: AssetId) -> Balance;
+    /// Withdraw admin fees
+    fn withdraw_admin_fees(who: &AccountId, pool_id: PoolId);
 }
 ```
 
