@@ -5,6 +5,7 @@
   "PoolTokenIndex": "u32",
   "AssetId": "u32",
   "PoolInfo": {
+    "owner": "AccountId",
     "pool_asset": "AssetId",
     "assets": "Vec<AssetId>",
     "amplification": "Number",
