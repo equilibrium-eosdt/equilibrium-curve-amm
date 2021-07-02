@@ -135,6 +135,11 @@ pub mod pallet {
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Pool with specified id `PoolId` was created successfully by `T::AccountId`.
+        ///
+        /// Included values are:
+        /// - account identifier `T::AccountId`
+        /// - pool identifier `PoolId`
+        ///
         /// \[who, pool_id\]
         CreatePool(T::AccountId, PoolId),
         /// Liquidity added into the pool `PoolId` by `T::AccountId`.
@@ -214,15 +219,20 @@ pub mod pallet {
         /// Liquidity removed from pool `PoolId` only for one token.
         ///
         /// Included values are:
-        /// - account identifier `AccountId`
+        /// - account identifier `T::AccountId`
         /// - pool identifier `PoolId`
-        /// - removed amount `T::Balance`
-        /// - dy `T::Balance`
+        /// - removed token amount `T::Balance`
+        /// - received token amount `T::Balance`
         /// - actual token supply `T::Balance`
         ///
         /// \[who, pool_id, burn_amount, dy, token_supply\]
         RemoveLiquidityOne(T::AccountId, PoolId, T::Balance, T::Balance, T::Balance),
         /// Withdraw admin fees `Vec<T::Balance>` from pool `PoolId` by user `T::AccountId`
+        ///
+        /// Included values are:
+        /// - account identifier `T::AccountId`
+        /// - pool identifier `PoolId`
+        ///
         /// [who, pool_id, admin_fees]
         WithdrawAdminFees(T::AccountId, PoolId, Vec<T::Balance>),
     }
@@ -1707,7 +1717,7 @@ pub mod traits {
         fn check(items: &[T]) -> Result<(), DispatchError>;
     }
 
-    impl <T> SliceChecker<T> for () {
+    impl<T> SliceChecker<T> for () {
         fn check(_items: &[T]) -> Result<(), DispatchError> {
             Ok(())
         }
