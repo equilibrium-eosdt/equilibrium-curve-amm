@@ -1657,6 +1657,7 @@ mod curve {
                                 provider,
                                 _,
                                 token_amount,
+                                _,
                                 coin_amount,
                                 _,
                             )) = last_event()

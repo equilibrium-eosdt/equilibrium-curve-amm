@@ -222,11 +222,12 @@ pub mod pallet {
         /// - account identifier `T::AccountId`
         /// - pool identifier `PoolId`
         /// - removed token amount `T::Balance`
+        /// - received token index `PoolTokenIndex`
         /// - received token amount `T::Balance`
         /// - actual token supply `T::Balance`
         ///
         /// \[who, pool_id, burn_amount, received_amount, token_supply\]
-        RemoveLiquidityOne(T::AccountId, PoolId, T::Balance, T::Balance, T::Balance),
+        RemoveLiquidityOne(T::AccountId, PoolId, T::Balance, PoolTokenIndex, T::Balance, T::Balance),
         /// Withdraw admin fees `Vec<T::Balance>` from pool `PoolId` by user `T::AccountId`
         ///
         /// Included values are:
@@ -1426,6 +1427,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
         i: PoolTokenIndex,
         min_amount: Self::Balance,
     ) -> DispatchResultWithPostInfo {
+        let pti_i = i;
         let i = i as usize;
 
         let n_token_amount = Self::convert_balance_to_number(token_amount);
@@ -1509,6 +1511,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             provider,
             pool_id,
             burn_amount,
+            pti_i,
             dy,
             new_token_supply,
         ));
