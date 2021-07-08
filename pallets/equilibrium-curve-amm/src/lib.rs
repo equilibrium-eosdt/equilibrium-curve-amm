@@ -940,6 +940,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
     ) -> DispatchResultWithPostInfo {
         let zero = Self::get_number(0);
 
+        let b_zero = Self::convert_number_to_balance(zero);
+        ensure!(amounts.iter().all(|&x| x >= b_zero), Error::<T>::WrongAssetAmount);
+
         let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
                 let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
@@ -952,9 +955,6 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 );
 
                 ensure!(n_coins == amounts.len(), Error::<T>::IndexOutOfRange);
-
-                let b_zero = Self::convert_number_to_balance(zero);
-                ensure!(amounts.iter().all(|&x| x >= b_zero), Error::<T>::WrongAssetAmount);
 
                 let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
 
@@ -1110,6 +1110,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
     ) -> DispatchResultWithPostInfo {
         let prec = T::Precision::get();
 
+        let b_zero = Self::convert_number_to_balance(Self::get_number(0));
+        ensure!(dx >= b_zero, Error::<T>::WrongAssetAmount);
+
         // sold_id, tokens_sold, bought_id, tokens_bought
         let (provider, pool_id, dy) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
@@ -1187,6 +1190,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
         min_amounts: Vec<Self::Balance>,
     ) -> DispatchResultWithPostInfo {
         let zero = Self::get_number(0);
+
+        let b_zero = Self::convert_number_to_balance(zero);
+        ensure!(amount >= b_zero, Error::<T>::WrongAssetAmount);
 
         let n_amount = Self::convert_balance_to_number(amount);
 
@@ -1293,6 +1299,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
         max_burn_amount: Self::Balance,
     ) -> DispatchResultWithPostInfo {
         let zero = Self::get_number(0);
+
+        let b_zero = Self::convert_number_to_balance(zero);
+        ensure!(amounts.iter().all(|&x| x >= b_zero), Error::<T>::WrongAssetAmount);
 
         let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
@@ -1459,6 +1468,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
     ) -> DispatchResultWithPostInfo {
         let pti_i = i;
         let i = i as usize;
+
+        let b_zero = Self::convert_number_to_balance(Self::get_number(0));
+        ensure!(token_amount >= b_zero, Error::<T>::WrongAssetAmount);
 
         let n_token_amount = Self::convert_balance_to_number(token_amount);
 
