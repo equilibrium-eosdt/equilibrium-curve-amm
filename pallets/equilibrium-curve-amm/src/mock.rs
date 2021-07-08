@@ -254,34 +254,20 @@ impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for TestAssets {
         let pool = CurveAmm::pool(pool_id).ok_or(DispatchError::Other(&"Pool not found"))?;
         let assets = pool.assets;
 
-        ASSETS.with(|d| -> DispatchResult {
-            for (asset, amount) in assets.into_iter().zip(amounts) {
-                let i = usize::try_from(asset)
-                    .map_err(|_| DispatchError::Other(&"Index out of range"))?;
-                let mut d = d.borrow_mut();
-                let a = d
-                    .get_mut(i)
-                    .ok_or(DispatchError::Other(&"Index out of range"))?;
+        for (asset, amount) in assets.into_iter().zip(amounts) {
+            Self::transfer(
+                asset,
+                &CurveAmmModuleId::get().into_account(),
+                &CURVE_ADMIN_FEE_ACC_ID,
+                amount,
+            )?;
+        }
 
-                let dest = CurveAmmModuleId::get().into_account();
-                let x = a
-                    .balances
-                    .get_mut(&dest)
-                    .ok_or(DispatchError::Other(&"Not found"))?;
-
-                *x = x
-                    .checked_sub(amount)
-                    .ok_or(DispatchError::Other(&"Overflow"))?;
-
-                a.total = a
-                    .total
-                    .checked_sub(amount)
-                    .ok_or(DispatchError::Other(&"Overflow"))?;
-            }
-            Ok(())
-        })
+        Ok(())
     }
 }
+
+pub const CURVE_ADMIN_FEE_ACC_ID: AccountId = 343532;
 
 pub struct EmptyUnbalanceHandler;
 
