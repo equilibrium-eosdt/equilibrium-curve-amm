@@ -80,7 +80,7 @@ pub mod pallet {
         /// The asset ID type
         type AssetId: Parameter + Ord + Copy;
         /// The balance type of an account
-        type Balance: Parameter + Codec + Copy + Ord;
+        type Balance: Parameter + Codec + Copy + Ord + CheckedAdd + CheckedSub;
         /// External implementation for required opeartions with assets
         type Assets: super::traits::Assets<Self::AssetId, Self::Balance, Self::AccountId>;
         /// Standart balances pallet for utility token or adapter
@@ -222,11 +222,19 @@ pub mod pallet {
         /// - account identifier `T::AccountId`
         /// - pool identifier `PoolId`
         /// - removed token amount `T::Balance`
+        /// - received token index `PoolTokenIndex`
         /// - received token amount `T::Balance`
         /// - actual token supply `T::Balance`
         ///
         /// \[who, pool_id, burn_amount, received_amount, token_supply\]
-        RemoveLiquidityOne(T::AccountId, PoolId, T::Balance, T::Balance, T::Balance),
+        RemoveLiquidityOne(
+            T::AccountId,
+            PoolId,
+            T::Balance,
+            PoolTokenIndex,
+            T::Balance,
+            T::Balance,
+        ),
         /// Withdraw admin fees `Vec<T::Balance>` from pool `PoolId` by user `T::AccountId`
         ///
         /// Included values are:
@@ -802,6 +810,46 @@ impl<T: Config> Pallet<T> {
 
         Ok(Self::convert_number_to_balance(ratio))
     }
+
+    fn transfer_liquidity_into_pool(
+        pool: &mut PoolInfo<T::AccountId, T::AssetId, T::Number, T::Balance>,
+        source: &T::AccountId,
+        destination_asset_index: usize,
+        amount: T::Balance,
+    ) -> DispatchResult {
+        T::Assets::transfer(
+            pool.assets[destination_asset_index],
+            source,
+            &T::ModuleId::get().into_account(),
+            amount,
+        )?;
+
+        pool.total_balances[destination_asset_index] = pool.total_balances[destination_asset_index]
+            .checked_add(&amount)
+            .ok_or(Error::<T>::InconsistentStorage)?;
+
+        Ok(())
+    }
+
+    fn transfer_liquidity_from_pool(
+        pool: &mut PoolInfo<T::AccountId, T::AssetId, T::Number, T::Balance>,
+        source_asset_index: usize,
+        destination: &T::AccountId,
+        amount: T::Balance,
+    ) -> DispatchResult {
+        T::Assets::transfer(
+            pool.assets[source_asset_index],
+            &T::ModuleId::get().into_account(),
+            destination,
+            amount,
+        )?;
+
+        pool.total_balances[source_asset_index] = pool.total_balances[source_asset_index]
+            .checked_sub(&amount)
+            .ok_or(Error::<T>::InconsistentStorage)?;
+
+        Ok(())
+    }
 }
 
 impl<T: Config> CurveAmm for Pallet<T> {
@@ -860,7 +908,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 let asset =
                     T::Assets::create_asset(pool_id).map_err(|_| Error::<T>::AssetNotCreated)?;
 
-                let balances =
+                let empty_balances =
                     vec![Self::convert_number_to_balance(Self::get_number(0)); assets.len()];
 
                 *maybe_pool_info = Some(PoolInfo {
@@ -870,7 +918,8 @@ impl<T: Config> CurveAmm for Pallet<T> {
                     amplification,
                     fee,
                     admin_fee,
-                    balances,
+                    balances: empty_balances.clone(),
+                    total_balances: empty_balances,
                 });
 
                 Ok(())
@@ -895,6 +944,12 @@ impl<T: Config> CurveAmm for Pallet<T> {
         min_mint_amount: Self::Balance,
     ) -> DispatchResultWithPostInfo {
         let zero = Self::get_number(0);
+
+        let b_zero = Self::convert_number_to_balance(zero);
+        ensure!(
+            amounts.iter().all(|&x| x >= b_zero),
+            Error::<T>::WrongAssetAmount
+        );
 
         let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
@@ -1016,12 +1071,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 }
                 for i in 0..n_coins {
                     if n_amounts[i] > zero {
-                        T::Assets::transfer(
-                            pool.assets[i],
-                            &who,
-                            &T::ModuleId::get().into_account(),
-                            amounts[i],
-                        )?;
+                        Self::transfer_liquidity_into_pool(pool, &who, i, amounts[i])?;
                     }
                 }
 
@@ -1067,6 +1117,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
         min_dy: Self::Balance,
     ) -> DispatchResultWithPostInfo {
         let prec = T::Precision::get();
+
+        let b_zero = Self::convert_number_to_balance(Self::get_number(0));
+        ensure!(dx >= b_zero, Error::<T>::WrongAssetAmount);
 
         // sold_id, tokens_sold, bought_id, tokens_bought
         let (provider, pool_id, dy) =
@@ -1127,9 +1180,8 @@ impl<T: Config> CurveAmm for Pallet<T> {
                     Error::<T>::InsufficientFunds
                 );
 
-                T::Assets::transfer(pool.assets[i], &who, &T::ModuleId::get().into_account(), dx)?;
-
-                T::Assets::transfer(pool.assets[j], &T::ModuleId::get().into_account(), &who, dy)?;
+                Self::transfer_liquidity_into_pool(pool, &who, i, dx)?;
+                Self::transfer_liquidity_from_pool(pool, j, &who, dy)?;
 
                 Ok((who.clone(), pool_id, dy))
             })?;
@@ -1146,6 +1198,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
         min_amounts: Vec<Self::Balance>,
     ) -> DispatchResultWithPostInfo {
         let zero = Self::get_number(0);
+
+        let b_zero = Self::convert_number_to_balance(zero);
+        ensure!(amount >= b_zero, Error::<T>::WrongAssetAmount);
 
         let n_amount = Self::convert_balance_to_number(amount);
 
@@ -1221,12 +1276,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
 
                 for i in 0..n_coins {
                     if n_amounts[i] > zero {
-                        T::Assets::transfer(
-                            pool.assets[i],
-                            &T::ModuleId::get().into_account(),
-                            &who,
-                            amounts[i],
-                        )?;
+                        Self::transfer_liquidity_from_pool(pool, i, &who, amounts[i])?;
                     }
                 }
 
@@ -1257,6 +1307,12 @@ impl<T: Config> CurveAmm for Pallet<T> {
         max_burn_amount: Self::Balance,
     ) -> DispatchResultWithPostInfo {
         let zero = Self::get_number(0);
+
+        let b_zero = Self::convert_number_to_balance(zero);
+        ensure!(
+            amounts.iter().all(|&x| x >= b_zero),
+            Error::<T>::WrongAssetAmount
+        );
 
         let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
@@ -1383,12 +1439,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
 
                 for i in 0..n_coins {
                     if n_amounts[i] > zero {
-                        T::Assets::transfer(
-                            pool.assets[i],
-                            &T::ModuleId::get().into_account(),
-                            &who,
-                            amounts[i],
-                        )?;
+                        Self::transfer_liquidity_from_pool(pool, i, &who, amounts[i])?;
                     }
                 }
 
@@ -1426,7 +1477,11 @@ impl<T: Config> CurveAmm for Pallet<T> {
         i: PoolTokenIndex,
         min_amount: Self::Balance,
     ) -> DispatchResultWithPostInfo {
+        let pti_i = i;
         let i = i as usize;
+
+        let b_zero = Self::convert_number_to_balance(Self::get_number(0));
+        ensure!(token_amount >= b_zero, Error::<T>::WrongAssetAmount);
 
         let n_token_amount = Self::convert_balance_to_number(token_amount);
 
@@ -1489,12 +1544,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
 
                 T::Assets::burn(pool.pool_asset, &who, token_amount)?;
 
-                T::Assets::transfer(
-                    pool.assets[i],
-                    &T::ModuleId::get().into_account(),
-                    &who,
-                    b_dy,
-                )?;
+                Self::transfer_liquidity_from_pool(pool, i, &who, b_dy)?;
 
                 Ok((
                     who.clone(),
@@ -1509,6 +1559,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             provider,
             pool_id,
             burn_amount,
+            pti_i,
             dy,
             new_token_supply,
         ));
@@ -1538,24 +1589,16 @@ impl<T: Config> CurveAmm for Pallet<T> {
             Error::<T>::InconsistentStorage
         );
 
-        let module_account_id = T::ModuleId::get().into_account();
-
-        let assets = pool.assets;
         let balances = pool.balances;
+        let total_balances = pool.total_balances;
 
-        let admin_fees = assets
+        let admin_fees = total_balances
             .into_iter()
             .zip(balances.into_iter())
-            .map(|(a, b)| {
-                let n_module_account_balance =
-                    Self::convert_balance_to_number(T::Assets::balance(a, &module_account_id));
-                let n_pool_balance = Self::convert_balance_to_number(b);
+            .map(|(tb, b)| {
+                let admin_fee = tb.checked_sub(&b).ok_or(Error::<T>::Math)?;
 
-                let fee = n_module_account_balance
-                    .checked_sub(&n_pool_balance)
-                    .ok_or(Error::<T>::Math)?;
-
-                Ok(Self::convert_number_to_balance(fee))
+                Ok(admin_fee)
             })
             .collect::<Result<Vec<Self::Balance>, DispatchError>>()?;
 
@@ -1748,4 +1791,6 @@ pub struct PoolInfo<AccountId, AssetId, Number, Balance> {
     pub admin_fee: Permill,
     /// Current balances excluding admin_fee
     pub balances: Vec<Balance>,
+    /// Current balances including admin_fee
+    pub total_balances: Vec<Balance>,
 }

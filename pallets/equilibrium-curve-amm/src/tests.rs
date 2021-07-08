@@ -1,3 +1,4 @@
+use crate::traits::Assets;
 use crate::{mock::*, Error, PoolInfo};
 use core::convert::From;
 use frame_support::assert_err_ignore_postinfo;
@@ -99,7 +100,8 @@ fn create_pool_pool_saved_to_storage() {
                 amplification: FixedU128::from(1u128),
                 fee: Permill::one(),
                 admin_fee: Permill::one(),
-                balances: vec![0u64, 0u64,]
+                balances: vec![0u64, 0u64,],
+                total_balances: vec![0u64, 0u64],
             })
         );
     });
@@ -136,6 +138,111 @@ fn create_pool_on_unbalanced_called() {
         ));
         let balance_after_fee = Balances::free_balance(&1);
         assert_eq!(initial_balance - balance_after_fee, 999);
+    });
+}
+
+#[test]
+fn withdraw_admin_fee_several_polls_with_common_asset() {
+    new_test_ext().execute_with(|| {
+        let balance_one = 1_000_000_000;
+        let owner = 1;
+        let base_eq_amount: Balance = 100_000_000 * balance_one;
+        let base_amount: Balance = 100_000_000 * balance_one;
+
+        let common_asset = TestAssets::create_asset().unwrap();
+        assert_eq!(common_asset, 0);
+
+        let asset_a = TestAssets::create_asset().unwrap();
+        assert_eq!(asset_a, 1);
+
+        let asset_b = TestAssets::create_asset().unwrap();
+        assert_eq!(asset_b, 2);
+
+        let asset_c = TestAssets::create_asset().unwrap();
+        assert_eq!(asset_c, 3);
+
+        let asset_d = TestAssets::create_asset().unwrap();
+        assert_eq!(asset_d, 4);
+
+        let asset_e = TestAssets::create_asset().unwrap();
+        assert_eq!(asset_e, 5);
+
+        let asset_f = TestAssets::create_asset().unwrap();
+        assert_eq!(asset_f, 6);
+
+        let pool_a_assets = vec![common_asset, asset_a, asset_b];
+        let pool_b_assets = vec![common_asset, asset_c, asset_d];
+        let pool_c_assets = vec![common_asset, asset_e, asset_f];
+
+        let _ = Balances::deposit_creating(&owner, base_eq_amount);
+        for asset in [
+            common_asset,
+            asset_a,
+            asset_b,
+            asset_c,
+            asset_d,
+            asset_e,
+            asset_f,
+        ] {
+            assert_ok!(TestAssets::mint(asset, &owner, base_amount));
+        }
+
+        let fee = Permill::from_parts(600);
+        let admin_fee = Permill::from_parts(200);
+        let amplification = FixedU128::saturating_from_integer(100);
+        let initial_pool_asset_amount = 10_000 * balance_one;
+        let disbalance_asset_amount = 1_000_000 * balance_one;
+
+        for (i, assets) in [pool_a_assets, pool_b_assets, pool_c_assets]
+            .iter()
+            .enumerate()
+        {
+            let pool_id = i as u32;
+
+            assert_ok!(CurveAmm::create_pool(
+                Origin::signed(owner),
+                assets.clone(),
+                amplification,
+                fee,
+                admin_fee,
+            ));
+
+            assert_ok!(CurveAmm::add_liquidity(
+                Origin::signed(owner),
+                pool_id,
+                vec![initial_pool_asset_amount; 3],
+                0
+            ));
+
+            assert_ok!(CurveAmm::add_liquidity(
+                Origin::signed(owner),
+                pool_id,
+                vec![disbalance_asset_amount, 0, 0],
+                0
+            ));
+        }
+
+        let mut pool_admin_fees = Vec::with_capacity(3);
+
+        for i in 0..3 {
+            let pool_id = i as u32;
+            let prev_balance = TestAssets::balance(common_asset, &CURVE_ADMIN_FEE_ACC_ID);
+
+            assert_ok!(CurveAmm::withdraw_admin_fees(
+                Origin::signed(owner),
+                pool_id,
+            ));
+
+            let curr_balance = TestAssets::balance(common_asset, &CURVE_ADMIN_FEE_ACC_ID);
+
+            let balance_delta = curr_balance - prev_balance;
+
+            pool_admin_fees.push(balance_delta);
+        }
+
+        let first_fee = pool_admin_fees[0];
+
+        assert!(pool_admin_fees.iter().all(|&x| x == first_fee));
     });
 }
 
@@ -1657,6 +1764,7 @@ mod curve {
                                 provider,
                                 _,
                                 token_amount,
+                                _,
                                 coin_amount,
                                 _,
                             )) = last_event()
