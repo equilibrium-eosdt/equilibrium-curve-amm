@@ -1578,24 +1578,17 @@ impl<T: Config> CurveAmm for Pallet<T> {
             Error::<T>::InconsistentStorage
         );
 
-        let module_account_id = T::ModuleId::get().into_account();
-
-        let assets = pool.assets;
         let balances = pool.balances;
+        let total_balances = pool.total_balances;
 
-        let admin_fees = assets
+        let admin_fees = total_balances
             .into_iter()
             .zip(balances.into_iter())
-            .map(|(a, b)| {
-                let n_module_account_balance =
-                    Self::convert_balance_to_number(T::Assets::balance(a, &module_account_id));
-                let n_pool_balance = Self::convert_balance_to_number(b);
-
-                let fee = n_module_account_balance
-                    .checked_sub(&n_pool_balance)
+            .map(|(tb, b)| {
+                let admin_fee = tb.checked_sub(&b)
                     .ok_or(Error::<T>::Math)?;
 
-                Ok(Self::convert_number_to_balance(fee))
+                Ok(admin_fee)
             })
             .collect::<Result<Vec<Self::Balance>, DispatchError>>()?;
 
