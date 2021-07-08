@@ -227,7 +227,14 @@ pub mod pallet {
         /// - actual token supply `T::Balance`
         ///
         /// \[who, pool_id, burn_amount, received_amount, token_supply\]
-        RemoveLiquidityOne(T::AccountId, PoolId, T::Balance, PoolTokenIndex, T::Balance, T::Balance),
+        RemoveLiquidityOne(
+            T::AccountId,
+            PoolId,
+            T::Balance,
+            PoolTokenIndex,
+            T::Balance,
+            T::Balance,
+        ),
         /// Withdraw admin fees `Vec<T::Balance>` from pool `PoolId` by user `T::AccountId`
         ///
         /// Included values are:
@@ -817,8 +824,7 @@ impl<T: Config> Pallet<T> {
             amount,
         )?;
 
-        pool.total_balances[destination_asset_index] =
-            pool.total_balances[destination_asset_index]
+        pool.total_balances[destination_asset_index] = pool.total_balances[destination_asset_index]
             .checked_add(&amount)
             .ok_or(Error::<T>::InconsistentStorage)?;
 
@@ -838,10 +844,9 @@ impl<T: Config> Pallet<T> {
             amount,
         )?;
 
-        pool.total_balances[source_asset_index] =
-            pool.total_balances[source_asset_index]
-                .checked_sub(&amount)
-                .ok_or(Error::<T>::InconsistentStorage)?;
+        pool.total_balances[source_asset_index] = pool.total_balances[source_asset_index]
+            .checked_sub(&amount)
+            .ok_or(Error::<T>::InconsistentStorage)?;
 
         Ok(())
     }
@@ -941,7 +946,10 @@ impl<T: Config> CurveAmm for Pallet<T> {
         let zero = Self::get_number(0);
 
         let b_zero = Self::convert_number_to_balance(zero);
-        ensure!(amounts.iter().all(|&x| x >= b_zero), Error::<T>::WrongAssetAmount);
+        ensure!(
+            amounts.iter().all(|&x| x >= b_zero),
+            Error::<T>::WrongAssetAmount
+        );
 
         let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
@@ -1301,7 +1309,10 @@ impl<T: Config> CurveAmm for Pallet<T> {
         let zero = Self::get_number(0);
 
         let b_zero = Self::convert_number_to_balance(zero);
-        ensure!(amounts.iter().all(|&x| x >= b_zero), Error::<T>::WrongAssetAmount);
+        ensure!(
+            amounts.iter().all(|&x| x >= b_zero),
+            Error::<T>::WrongAssetAmount
+        );
 
         let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
@@ -1585,8 +1596,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             .into_iter()
             .zip(balances.into_iter())
             .map(|(tb, b)| {
-                let admin_fee = tb.checked_sub(&b)
-                    .ok_or(Error::<T>::Math)?;
+                let admin_fee = tb.checked_sub(&b).ok_or(Error::<T>::Math)?;
 
                 Ok(admin_fee)
             })
