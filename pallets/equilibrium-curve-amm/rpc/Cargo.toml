@@ -1,0 +1,24 @@
+[package]
+name = "equilibrium-curve-amm-rpc"
+version = "0.1.5"
+authors = ["equilibrium"]
+edition = "2018"
+license = "Apache-2.0"
+repository = "https://github.com/equilibrium-eosdt/equilibrium-curve-amm"
+description = "RPC interface for the Substrate-based runtime version of Curve automated market maker."
+readme = "README.md"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "2.0.0" }
+jsonrpc-core = "15.1.0"
+jsonrpc-core-client = "15.1.0"
+jsonrpc-derive = "15.1.0"
+sp-core = { version = "3.0.0", git = 'https://github.com/paritytech/substrate.git', tag = "v3.0.0" }
+sp-rpc = { version = "3.0.0", git = 'https://github.com/paritytech/substrate.git', tag = "v3.0.0" }
+sp-runtime = { version = "3.0.0", git = 'https://github.com/paritytech/substrate.git', tag = "v3.0.0" }
+sp-api = { version = "3.0.0", git = 'https://github.com/paritytech/substrate.git', tag = "v3.0.0" }
+sp-blockchain = { version = "3.0.0", git = 'https://github.com/paritytech/substrate.git', tag = "v3.0.0" }
+equilibrium-curve-amm-rpc-runtime-api = { version = "0.1.5", path = "./runtime-api" }

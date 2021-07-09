@@ -1,0 +1,1 @@
+# RPC Runtime API for the `equilibrium-curve-amm` Pallet
