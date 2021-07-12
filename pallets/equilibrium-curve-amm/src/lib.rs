@@ -37,6 +37,7 @@ extern crate sp_runtime;
 
 pub use pallet::*;
 
+pub mod benchmarking;
 #[cfg(test)]
 mod mock;
 
@@ -1654,6 +1655,9 @@ pub mod traits {
         fn balance(asset: AssetId, who: &AccountId) -> Balance;
         /// Returns total issuance of the specified asset
         fn total_issuance(asset: AssetId) -> Balance;
+        /// For benchmarking purposes only
+        #[cfg(feature = "runtime-benchmarks")]
+        fn create_benchmark_asset() -> AssetId;
     }
 
     /// Generic conversion trait. Unlike `sp_runtime::traits::Convert` it supports cases

@@ -26,6 +26,13 @@ version = "3.0.0"
 git = "https://github.com/paritytech/substrate.git"
 tag = "v3.0.0"
 
+[dependencies.frame-benchmarking]
+default-features = false
+git = "https://github.com/paritytech/substrate.git"
+optional = true
+package = "frame-benchmarking"
+tag = "v3.0.0"
+
 [dev-dependencies]
 serde = { version = "1.0.101" }
 
@@ -68,3 +75,5 @@ std = [
     "sp-std/std",
 	"sp-runtime/std",
 ]
+
+runtime-benchmarks = ["frame-benchmarking"]

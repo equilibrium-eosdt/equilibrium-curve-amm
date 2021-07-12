@@ -31,8 +31,8 @@ use frame_system::RawOrigin;
 use pallet_assets::Call as AssetsCall;
 use sp_runtime::traits::AccountIdConversion;
 use sp_runtime::traits::Dispatchable;
-use sp_runtime::MultiAddress;
 use sp_runtime::FixedI64;
+use sp_runtime::MultiAddress;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -406,10 +406,10 @@ impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for Fram
 
         // Guessing unused asset id
         let mut seed = random_u32_seed();
-        for _ in 0..10 {
+        for _ in 0..100 {
             seed = lcg(seed);
 
-            let call = Call::Assets(AssetsCall::force_create(seed, multi_address.clone(), 0, 1));
+            let call = Call::Assets(AssetsCall::force_create(seed, multi_address.clone(), 10, 1));
             if call.dispatch(origin.clone()).map_err(|x| x.error).is_ok() {
                 return Ok(seed);
             }
@@ -482,6 +482,11 @@ impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for Fram
             Self::burn(asset, &CurveAmmModuleId::get().into_account(), fee)?;
         }
         Ok(())
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn create_benchmark_asset() -> AssetId {
+        Self::create_asset(Default::default()).unwrap()
     }
 }
 
@@ -705,7 +710,10 @@ impl_runtime_apis! {
             use frame_benchmarking::{Benchmarking, BenchmarkBatch, add_benchmark, TrackedStorageKey};
 
             use frame_system_benchmarking::Module as SystemBench;
+            use equilibrium_curve_amm::benchmarking::Module as CurveAmmBench;
+
             impl frame_system_benchmarking::Config for Runtime {}
+            impl equilibrium_curve_amm::benchmarking::Config for Runtime {}
 
             let whitelist: Vec<TrackedStorageKey> = vec![
                 // Block Number
@@ -726,6 +734,7 @@ impl_runtime_apis! {
             add_benchmark!(params, batches, frame_system, SystemBench::<Runtime>);
             add_benchmark!(params, batches, pallet_balances, Balances);
             add_benchmark!(params, batches, pallet_timestamp, Timestamp);
+            add_benchmark!(params, batches, equilibrium_curve_amm, CurveAmmBench::<Runtime>);
 
             if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
             Ok(batches)
