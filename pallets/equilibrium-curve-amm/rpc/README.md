@@ -1,0 +1,1 @@
+# RPC interface for the `equilibrium-curve-amm` Pallet

@@ -1330,6 +1330,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "equilibrium-curve-amm-rpc"
+version = "0.1.5"
+dependencies = [
+ "equilibrium-curve-amm-rpc-runtime-api",
+ "jsonrpc-core",
+ "jsonrpc-core-client",
+ "jsonrpc-derive",
+ "parity-scale-codec",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-rpc",
+ "sp-runtime",
+]
+
+[[package]]
+name = "equilibrium-curve-amm-rpc-runtime-api"
+version = "0.1.5"
+dependencies = [
+ "equilibrium-curve-amm",
+ "parity-scale-codec",
+ "sp-api",
+ "sp-runtime",
+]
+
+[[package]]
 name = "erased-serde"
 version = "0.3.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3517,6 +3543,7 @@ dependencies = [
 name = "node"
 version = "0.1.0"
 dependencies = [
+ "equilibrium-curve-amm-rpc",
  "frame-benchmarking",
  "frame-benchmarking-cli",
  "jsonrpc-core",
@@ -3555,6 +3582,7 @@ name = "node-runtime"
 version = "0.1.0"
 dependencies = [
  "equilibrium-curve-amm",
+ "equilibrium-curve-amm-rpc-runtime-api",
  "frame-benchmarking",
  "frame-executive",
  "frame-support",

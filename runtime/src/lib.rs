@@ -686,6 +686,17 @@ impl_runtime_apis! {
         }
     }
 
+    impl equilibrium_curve_amm_rpc_runtime_api::EquilibriumCurveAmmApi<Block, Balance> for Runtime {
+        fn get_dy(
+            pool_id: equilibrium_curve_amm::PoolId,
+            i: equilibrium_curve_amm::PoolTokenIndex,
+            j: equilibrium_curve_amm::PoolTokenIndex,
+            dx: Balance
+        ) -> Option<Balance> {
+            CurveAmm::get_dy(pool_id, i, j, dx).ok()
+        }
+    }
+
     #[cfg(feature = "runtime-benchmarks")]
     impl frame_benchmarking::Benchmark<Block> for Runtime {
         fn dispatch_benchmark(

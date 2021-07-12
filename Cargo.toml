@@ -4,6 +4,8 @@ panic = 'unwind'
 [workspace]
 members = [
     'node',
-    'pallets/*',
+    'pallets/equilibrium-curve-amm',
+    'pallets/equilibrium-curve-amm/rpc',
+    'pallets/equilibrium-curve-amm/rpc/runtime-api',
     'runtime',
 ]
