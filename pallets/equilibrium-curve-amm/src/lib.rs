@@ -1581,28 +1581,40 @@ impl<T: Config> CurveAmm for Pallet<T> {
     }
 
     fn withdraw_admin_fees(who: &Self::AccountId, pool_id: PoolId) -> DispatchResultWithPostInfo {
-        let pool = Self::pool(pool_id).ok_or(Error::<T>::PoolNotFound)?;
-        let n_coins = pool.assets.len();
+        let admin_fees =
+            Pools::<T>::try_mutate(pool_id, |maybe_pool| -> Result<_, DispatchError> {
+                let pool = maybe_pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
+                let n_coins = pool.assets.len();
 
-        ensure!(
-            n_coins == pool.balances.len(),
-            Error::<T>::InconsistentStorage
-        );
+                ensure!(
+                    n_coins == pool.balances.len(),
+                    Error::<T>::InconsistentStorage
+                );
 
-        let balances = pool.balances;
-        let total_balances = pool.total_balances;
+                let total_balances = &pool.total_balances;
+                let balances = &pool.balances;
 
-        let admin_fees = total_balances
-            .into_iter()
-            .zip(balances.into_iter())
-            .map(|(tb, b)| {
-                let admin_fee = tb.checked_sub(&b).ok_or(Error::<T>::Math)?;
+                let admin_fees = total_balances
+                    .into_iter()
+                    .zip(balances)
+                    .map(|(tb, b)| {
+                        let admin_fee = tb.checked_sub(b).ok_or(Error::<T>::Math)?;
 
-                Ok(admin_fee)
-            })
-            .collect::<Result<Vec<Self::Balance>, DispatchError>>()?;
+                        Ok(admin_fee)
+                    })
+                    .collect::<Result<Vec<Self::Balance>, DispatchError>>()?;
 
-        T::Assets::withdraw_admin_fees(pool_id, admin_fees.iter().copied())?;
+                T::Assets::withdraw_admin_fees(pool_id, admin_fees.iter().copied())?;
+
+                for i in 0..n_coins {
+                    pool.total_balances[i] = pool.total_balances[i]
+                        .checked_sub(&admin_fees[i])
+                        .ok_or(Error::<T>::Math)?;
+                }
+
+                Ok(admin_fees)
+            })?;
+
         Self::deposit_event(Event::WithdrawAdminFees(who.clone(), pool_id, admin_fees));
 
         Ok(().into())
