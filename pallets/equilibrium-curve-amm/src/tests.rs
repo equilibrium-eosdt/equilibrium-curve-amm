@@ -618,8 +618,8 @@ mod curve {
         }
     }
 
-    pub fn get_admin_fees(swap: AccountId, coins: &[AssetId]) -> Vec<Balance> {
-        let balances = CurveAmm::pools(0).unwrap().balances;
+    pub fn get_admin_fees(pool_id: PoolId, swap: AccountId, coins: &[AssetId]) -> Vec<Balance> {
+        let balances = CurveAmm::pools(pool_id).unwrap().balances;
         coins
             .iter()
             .copied()
@@ -1855,7 +1855,7 @@ mod curve {
                             assert!(received < FixedI64::one() - fee.into());
 
                             let expected_admin_fee = FixedI64::one() * fee.into() * admin_fee.into();
-                            let admin_fees = get_admin_fees(swap, &coins);
+                            let admin_fees = get_admin_fees(pool, swap, &coins);
 
                             if expected_admin_fee >= FixedI64::from_inner(1) {
                                 assert!(approx(
@@ -2372,18 +2372,22 @@ mod curve {
                     0
                 ));
 
-                assert!(
-                    get_admin_fees(swap, &coins)
-                        .iter()
-                        .filter(|b| **b > 0)
-                        .count()
-                        > 0
-                );
+                let admin_fees: Vec<Balance> =
+                    get_admin_fees(pool, swap, &coins).iter().copied().collect();
+                let total_balances_before = CurveAmm::pools(pool).unwrap().total_balances;
 
                 assert_ok!(CurveAmm::withdraw_admin_fees(Origin::signed(bob), pool));
 
+                let total_balances_after = CurveAmm::pools(pool).unwrap().total_balances;
+                for i in 0..coins.len() {
+                    assert_eq!(
+                        total_balances_before[i].checked_sub(admin_fees[i]).unwrap(),
+                        total_balances_after[i]
+                    );
+                }
+
                 assert_eq!(
-                    get_admin_fees(swap, &coins)
+                    get_admin_fees(pool, swap, &coins)
                         .iter()
                         .filter(|b| **b > 0)
                         .count(),
