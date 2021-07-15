@@ -37,52 +37,61 @@ use sp_std::marker::PhantomData;
 pub struct WeightInfo<T>(PhantomData<T>);
 impl<T: frame_system::Config> equilibrium_curve_amm::WeightInfo for WeightInfo<T> {
 	fn create_pool(b: u32, ) -> Weight {
-		(114_637_000 as Weight)
-			// Standard Error: 93_000
-			.saturating_add((9_588_000 as Weight).saturating_mul(b as Weight))
+		(99_327_000 as Weight)
+			// Standard Error: 1_021_000
+			.saturating_add((6_456_000 as Weight).saturating_mul(b as Weight))
 			.saturating_add(T::DbWeight::get().reads(5 as Weight))
 			.saturating_add(T::DbWeight::get().reads((1 as Weight).saturating_mul(b as Weight)))
 			.saturating_add(T::DbWeight::get().writes(4 as Weight))
 	}
-	fn add_liquidity(b: u32, ) -> Weight {
-		(124_157_000 as Weight)
-			// Standard Error: 521_000
-			.saturating_add((77_451_000 as Weight).saturating_mul(b as Weight))
+	fn add_liquidity_without_fee(b: u32, ) -> Weight {
+		(101_934_000 as Weight)
+			// Standard Error: 1_404_000
+			.saturating_add((61_442_000 as Weight).saturating_mul(b as Weight))
 			.saturating_add(T::DbWeight::get().reads(5 as Weight))
 			.saturating_add(T::DbWeight::get().reads((3 as Weight).saturating_mul(b as Weight)))
 			.saturating_add(T::DbWeight::get().writes(5 as Weight))
 			.saturating_add(T::DbWeight::get().writes((3 as Weight).saturating_mul(b as Weight)))
 	}
+	fn add_liquidity_with_fee(b: u32, ) -> Weight {
+		(89_519_000 as Weight)
+			// Standard Error: 558_000
+			.saturating_add((54_475_000 as Weight).saturating_mul(b as Weight))
+			.saturating_add(T::DbWeight::get().reads(3 as Weight))
+			.saturating_add(T::DbWeight::get().reads((3 as Weight).saturating_mul(b as Weight)))
+			.saturating_add(T::DbWeight::get().writes(3 as Weight))
+			.saturating_add(T::DbWeight::get().writes((3 as Weight).saturating_mul(b as Weight)))
+	}
 	fn exchange() -> Weight {
-		(531_470_000 as Weight)
+		(414_581_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(7 as Weight))
 			.saturating_add(T::DbWeight::get().writes(7 as Weight))
 	}
 	fn remove_liquidity(b: u32, ) -> Weight {
-		(122_452_000 as Weight)
-			// Standard Error: 260_000
-			.saturating_add((74_359_000 as Weight).saturating_mul(b as Weight))
+		(87_107_000 as Weight)
+			// Standard Error: 1_320_000
+			.saturating_add((62_363_000 as Weight).saturating_mul(b as Weight))
 			.saturating_add(T::DbWeight::get().reads(5 as Weight))
 			.saturating_add(T::DbWeight::get().reads((3 as Weight).saturating_mul(b as Weight)))
 			.saturating_add(T::DbWeight::get().writes(5 as Weight))
 			.saturating_add(T::DbWeight::get().writes((3 as Weight).saturating_mul(b as Weight)))
 	}
 	fn remove_liquidity_imbalance(b: u32, ) -> Weight {
-		(111_768_000 as Weight)
-			// Standard Error: 227_000
-			.saturating_add((70_766_000 as Weight).saturating_mul(b as Weight))
+		(87_230_000 as Weight)
+			// Standard Error: 1_302_000
+			.saturating_add((57_760_000 as Weight).saturating_mul(b as Weight))
 			.saturating_add(T::DbWeight::get().reads(3 as Weight))
 			.saturating_add(T::DbWeight::get().reads((3 as Weight).saturating_mul(b as Weight)))
 			.saturating_add(T::DbWeight::get().writes(3 as Weight))
 			.saturating_add(T::DbWeight::get().writes((3 as Weight).saturating_mul(b as Weight)))
 	}
 	fn remove_liquidity_one_coin() -> Weight {
-		(823_146_000 as Weight)
+		(640_871_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(6 as Weight))
 			.saturating_add(T::DbWeight::get().writes(6 as Weight))
 	}
 	fn withdraw_admin_fees() -> Weight {
-		(285_655_000 as Weight)
+		(225_222_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(11 as Weight))
 			.saturating_add(T::DbWeight::get().writes(11 as Weight))
 	}

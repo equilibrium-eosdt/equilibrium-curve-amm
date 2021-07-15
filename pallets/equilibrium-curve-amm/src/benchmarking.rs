@@ -131,7 +131,7 @@ benchmarks! {
         assert_eq!(pool_count+1, Curve::<T>::pool_count());
     }
 
-    add_liquidity{
+    add_liquidity_without_fee{
         let b in 2 .. 6;
 
         wait_81_blocks::<T>();
@@ -146,10 +146,39 @@ benchmarks! {
 
         let min_mint_amount: T::Balance = convert_to_balance::<T>(1 as usize);
 
-    }: _(RawOrigin::Signed(depositor), pool_id, amounts.clone(), min_mint_amount)
+    }: add_liquidity(RawOrigin::Signed(depositor), pool_id, amounts.clone(), min_mint_amount)
     verify {
         let pool = get_pool_info::<T>(pool_id);
         pool.balances.iter().zip(amounts.iter()).for_each(|(&b, &a)| assert_eq!(b, a));
+    }
+
+    add_liquidity_with_fee{
+        let b in 2 .. 6;
+
+        wait_81_blocks::<T>();
+        init_module_account::<T>();
+
+        let pool_id = create_pool_::<T>(b);
+        let depositor = add_liquidity_::<T>(pool_id, 10_000u32);
+        let pool = get_pool_info::<T>(pool_id);
+        let amounts: Vec<T::Balance> = pool.assets.iter()
+            .map(|_| convert_to_balance::<T>(10_000 as usize))
+            .collect();
+
+        let expected_total_balances: Vec<T::Balance> = pool.total_balances
+            .into_iter()
+            .zip(amounts.clone())
+            .map(|(tb, a)| tb + a)
+            .collect();
+
+        let min_mint_amount: T::Balance = convert_to_balance::<T>(1 as usize);
+
+    }: add_liquidity(RawOrigin::Signed(depositor), pool_id, amounts.clone(), min_mint_amount)
+    verify {
+        let pool = get_pool_info::<T>(pool_id);
+        pool.total_balances.iter()
+            .zip(expected_total_balances.iter())
+            .for_each(|(&tb, &eb)| assert_eq!(tb, eb));
     }
 
     exchange{
