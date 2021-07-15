@@ -25,7 +25,7 @@ impl crate::WeightInfo for () {
     fn add_liquidity_without_fee(_b: u32) -> Weight {
         0 as Weight
     }
-    fn add_liquidity_with_fee(b: u32) -> Weight {
+    fn add_liquidity_with_fee(_b: u32) -> Weight {
         0 as Weight
     }
     fn exchange() -> Weight {
