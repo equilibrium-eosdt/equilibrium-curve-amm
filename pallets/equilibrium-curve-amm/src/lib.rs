@@ -43,6 +43,7 @@ mod mock;
 
 #[cfg(test)]
 mod tests;
+pub mod weights;
 
 use crate::traits::CurveAmm;
 use frame_support::codec::{Decode, Encode};
@@ -58,10 +59,13 @@ use sp_std::iter::FromIterator;
 use sp_std::prelude::*;
 use traits::{Assets, CheckedConvert, SliceChecker};
 
+pub use weights::WeightInfo;
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::{traits::CheckedConvert, PoolId, PoolInfo, PoolTokenIndex};
     use crate::traits::{CurveAmm, SliceChecker};
+    use crate::WeightInfo;
     use frame_support::{
         dispatch::{Codec, DispatchResultWithPostInfo},
         pallet_prelude::*,
@@ -109,6 +113,8 @@ pub mod pallet {
             + Convert<Self::Number, Self::Balance>;
         /// Provides a way to perform additional asset checks
         type AssetChecker: SliceChecker<Self::AssetId>;
+        /// Weight information for extrinsics in this pallet
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -279,7 +285,7 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Creates a pool, taking a creation fee from the caller
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::create_pool(assets.len() as u32))]
         pub fn create_pool(
             origin: OriginFor<T>,
             assets: Vec<T::AssetId>,
@@ -294,7 +300,7 @@ pub mod pallet {
         /// Deposit coins into the pool
         /// `amounts` - list of amounts of coins to deposit,
         /// `min_mint_amount` - minimum amout of LP tokens to mint from the deposit.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::add_liquidity(amounts.len() as u32))]
         pub fn add_liquidity(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -310,7 +316,7 @@ pub mod pallet {
         /// `j` - index value of the coin to recieve,
         /// `dx` - amount of `i` being exchanged,
         /// `min_dy` - minimum amount of `j` to receive.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::exchange())]
         pub fn exchange(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -327,7 +333,7 @@ pub mod pallet {
         /// Withdrawal amount are based on current deposit ratios.
         /// `amount` - quantity of LP tokens to burn in the withdrawal,
         /// `min_amounts` - minimum amounts of underlying coins to receive.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::remove_liquidity(min_amounts.len() as u32))]
         pub fn remove_liquidity(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -341,7 +347,7 @@ pub mod pallet {
         /// Withdraw coins from the pool in an imbalanced amount.
         /// `amounts` - list of amounts of underlying coins to withdraw,
         /// `max_burn_amount` - maximum amount of LP token to burn in the withdrawal.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::remove_liquidity_imbalance(amounts.len() as u32))]
         pub fn remove_liquidity_imbalance(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -356,7 +362,7 @@ pub mod pallet {
         /// `token_amount` - amount of LP tokens to burn in the withdrawal,
         /// `i` - index value of the coin to withdraw,
         /// `min_amount` - minimum amount of coin to receive.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::remove_liquidity_one_coin())]
         pub fn remove_liquidity_one_coin(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -375,7 +381,7 @@ pub mod pallet {
         }
 
         /// Withdraw admin fee.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::withdraw_admin_fees())]
         pub fn withdraw_admin_fees(
             origin: OriginFor<T>,
             pool_id: PoolId,

@@ -6,21 +6,25 @@ use frame_system::{pallet_prelude::OriginFor, Module as System, RawOrigin};
 use sp_runtime::Permill;
 
 use crate::Pallet as Curve;
+use frame_benchmarking::frame_support::sp_runtime::ModuleId;
 
 const SEED: u32 = 0;
+const CURVE_AMM_MODULE_ID: ModuleId = ModuleId(*b"eq/crvam");
 
 pub trait Config: crate::Config {}
 pub struct Module<T: Config>(crate::Pallet<T>);
 
-fn get_pool_params<T: Config>() -> (
+fn get_pool_params<T: Config>(
+    assets_count: u32,
+) -> (
     T::AccountId,
     Vec<<T as crate::Config>::AssetId>,
     Permill,
     Permill,
     T::Number,
 ) {
-    let account = create_account::<T>("owner", 0, SEED, 1_000_000usize, None);
-    let assets: Vec<<T as crate::Config>::AssetId> = (0..5)
+    let account = create_account::<T>("owner", 0, SEED, 1_000_000_000usize, None);
+    let assets: Vec<<T as crate::Config>::AssetId> = (0..assets_count)
         .into_iter()
         .map(|_| T::Assets::create_benchmark_asset())
         .collect();
@@ -31,8 +35,15 @@ fn get_pool_params<T: Config>() -> (
     (account, assets, fee, admin_fee, amplification)
 }
 
-fn create_pool_<T: Config>() -> PoolId {
-    let (owner, assets, fee, admin_fee, amplification) = get_pool_params::<T>();
+fn init_module_account<T: Config>() {
+    <T::Currency as Currency<T::AccountId>>::make_free_balance_be(
+        &CURVE_AMM_MODULE_ID.into_account(),
+        convert_to_balance::<T>(1_000_000usize),
+    );
+}
+
+fn create_pool_<T: Config>(assets_count: u32) -> PoolId {
+    let (owner, assets, fee, admin_fee, amplification) = get_pool_params::<T>(assets_count);
 
     Curve::<T>::create_pool(
         RawOrigin::Signed(owner).into(),
@@ -48,11 +59,12 @@ fn create_pool_<T: Config>() -> PoolId {
 
 fn add_liquidity_<T: Config>(pool_id: PoolId, amount: u32) -> T::AccountId {
     let pool = Curve::<T>::pool(pool_id).unwrap();
-    let depositor = create_account::<T>("depositor", 0, SEED, 1_000_000usize, Some(&pool.assets));
+    let depositor =
+        create_account::<T>("depositor", 0, SEED, 1_000_000_000usize, Some(&pool.assets));
     let amounts: Vec<T::Balance> = pool
         .assets
         .iter()
-        .map(|&a| convert_to_balance::<T>(amount as usize))
+        .map(|_| convert_to_balance::<T>(amount as usize))
         .collect();
 
     let min_mint_amount: T::Balance = convert_to_balance::<T>(1 as usize);
@@ -100,7 +112,7 @@ fn convert_to_balance<T: Config>(number: usize) -> T::Balance {
     <T::Convert as Convert<T::Number, T::Balance>>::convert(number)
 }
 
-/// For using random_seed(){...} from
+/// For using random_seed(){...} from pallet-randomness-collective-flip
 /// https://docs.rs/pallet-randomness-collective-flip/3.0.0/pallet_randomness_collective_flip/
 fn wait_81_blocks<T: Config>() {
     System::<T>::set_block_number(81u32.into());
@@ -108,9 +120,10 @@ fn wait_81_blocks<T: Config>() {
 
 benchmarks! {
     create_pool{
-        wait_81_blocks::<T>();
+        let b in 2 .. 6;
 
-        let (owner, assets, fee, admin_fee, amplification) = get_pool_params::<T>();
+        wait_81_blocks::<T>();
+        let (owner, assets, fee, admin_fee, amplification) = get_pool_params::<T>(b);
         let pool_count = Curve::<T>::pool_count();
 
     }: _(RawOrigin::Signed(owner), assets, amplification, fee, admin_fee)
@@ -119,9 +132,12 @@ benchmarks! {
     }
 
     add_liquidity{
-        wait_81_blocks::<T>();
+        let b in 2 .. 6;
 
-        let pool_id = create_pool_::<T>();
+        wait_81_blocks::<T>();
+        init_module_account::<T>();
+
+        let pool_id = create_pool_::<T>(b);
         let pool = get_pool_info::<T>(pool_id);
         let depositor = create_account::<T>("depositor", 0, SEED, 1_000_000_000usize, Some(&pool.assets));
         let amounts: Vec<T::Balance> = pool.assets.iter()
@@ -129,12 +145,6 @@ benchmarks! {
             .collect();
 
         let min_mint_amount: T::Balance = convert_to_balance::<T>(1 as usize);
-
-        let expected_total_balances = pool.total_balances
-            .iter()
-            .zip(amounts.iter())
-            .map(|(&tb, &a)| tb + a)
-            .collect::<Vec<T::Balance>>();
 
     }: _(RawOrigin::Signed(depositor), pool_id, amounts.clone(), min_mint_amount)
     verify {
@@ -144,8 +154,10 @@ benchmarks! {
 
     exchange{
         wait_81_blocks::<T>();
+        init_module_account::<T>();
 
-        let pool_id = create_pool_::<T>();
+        let assets_count = 5;
+        let pool_id = create_pool_::<T>(assets_count);
         add_liquidity_::<T>(pool_id, 10_000u32);
 
         let pool = get_pool_info::<T>(pool_id);
@@ -163,9 +175,12 @@ benchmarks! {
     }
 
     remove_liquidity{
-        wait_81_blocks::<T>();
+        let b in 2 .. 6;
 
-        let pool_id = create_pool_::<T>();
+        wait_81_blocks::<T>();
+        init_module_account::<T>();
+
+        let pool_id = create_pool_::<T>(b);
         let depositor = add_liquidity_::<T>(pool_id, 10_000u32);
         let pool = get_pool_info::<T>(pool_id);
         let amount_to_remove = T::Assets::balance(pool.pool_asset, &depositor);
@@ -178,9 +193,12 @@ benchmarks! {
     }
 
     remove_liquidity_imbalance{
-        wait_81_blocks::<T>();
+        let b in 2 .. 6;
 
-        let pool_id = create_pool_::<T>();
+        wait_81_blocks::<T>();
+        init_module_account::<T>();
+
+        let pool_id = create_pool_::<T>(b);
         let depositor = add_liquidity_::<T>(pool_id, 10_000u32);
         let pool = get_pool_info::<T>(pool_id);
         let max_burn_amount = convert_to_balance::<T>(1_000usize);
@@ -200,8 +218,10 @@ benchmarks! {
 
     remove_liquidity_one_coin{
         wait_81_blocks::<T>();
+        init_module_account::<T>();
 
-        let pool_id = create_pool_::<T>();
+        let assets_count = 5;
+        let pool_id = create_pool_::<T>(assets_count);
         let depositor = add_liquidity_::<T>(pool_id, 10_000u32);
         let remove_coin_index = 0usize;
         let pool = get_pool_info::<T>(pool_id);
@@ -217,28 +237,25 @@ benchmarks! {
 
     withdraw_admin_fees{
         wait_81_blocks::<T>();
+        init_module_account::<T>();
 
-        let pool_id = create_pool_::<T>();
-        let depositor_1 = add_liquidity_::<T>(pool_id, 10_000u32);
-        let i_1 = 1;
-        let j_1 = 2;
-        let amount_1 = convert_to_balance::<T>(100usize);
-        let min_amount_to_receive_1 = convert_to_balance::<T>(0usize);
-        let origin_1: OriginFor<T> = RawOrigin::Signed(depositor_1.clone()).into();
+        let assets_count = 5;
+        let pool_id = create_pool_::<T>(assets_count);
+        let depositor = add_liquidity_::<T>(pool_id, 1000u32);
+        let pool = get_pool_info::<T>(pool_id);
 
-        let depositor_2 = add_liquidity_::<T>(pool_id, 10_000u32);
-        let i_2 = 2;
-        let j_2 = 3;
-        let amount_2 = convert_to_balance::<T>(50usize);
-        let min_amount_to_receive_2 = convert_to_balance::<T>(0usize);
-        let origin_2: OriginFor<T> = RawOrigin::Signed(depositor_2).into();
+        let exchanger = create_account::<T>("exchanger", 0, SEED, 1_000_000usize, Some(&pool.assets));
+        let i = 0;
+        let j = 1;
+        let amount = convert_to_balance::<T>(100usize);
+        let min_amount_to_receive = convert_to_balance::<T>(1usize);
+        let origin: OriginFor<T> = RawOrigin::Signed(exchanger).into();
 
-        for i in 0..10{
-            Curve::<T>::exchange(origin_1.clone(), pool_id, i_1, j_1, amount_1, min_amount_to_receive_1).unwrap();
-            Curve::<T>::exchange(origin_2.clone(), pool_id, i_2, j_2, amount_2, min_amount_to_receive_2).unwrap();
+        for _ in 0..10{
+            Curve::<T>::exchange(origin.clone(), pool_id, i, j, amount, min_amount_to_receive).unwrap();
         }
 
-    }:  _(RawOrigin::Signed(depositor_1), pool_id)
+    }:  _(RawOrigin::Signed(depositor), pool_id)
     verify{
         let pool = get_pool_info::<T>(pool_id);
         pool.total_balances.iter().zip(pool.balances.iter()).for_each(|(&tb, &b)|{

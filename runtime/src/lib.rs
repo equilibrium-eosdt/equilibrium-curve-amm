@@ -6,6 +6,8 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+mod curve_amm_weights;
+
 use pallet_grandpa::fg_primitives;
 use pallet_grandpa::{AuthorityId as GrandpaId, AuthorityList as GrandpaAuthorityList};
 use sp_api::impl_runtime_apis;
@@ -409,7 +411,7 @@ impl equilibrium_curve_amm::traits::Assets<AssetId, Balance, AccountId> for Fram
         for _ in 0..100 {
             seed = lcg(seed);
 
-            let call = Call::Assets(AssetsCall::force_create(seed, multi_address.clone(), 10, 1));
+            let call = Call::Assets(AssetsCall::force_create(seed, multi_address.clone(), 0, 1));
             if call.dispatch(origin.clone()).map_err(|x| x.error).is_ok() {
                 return Ok(seed);
             }
@@ -505,6 +507,7 @@ impl equilibrium_curve_amm::Config for Runtime {
     type Precision = Precision;
     type Convert = FixedU128Convert;
     type AssetChecker = ();
+    type WeightInfo = crate::curve_amm_weights::WeightInfo<Runtime>;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
