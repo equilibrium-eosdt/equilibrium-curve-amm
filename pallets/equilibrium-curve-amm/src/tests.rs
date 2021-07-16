@@ -877,6 +877,7 @@ mod curve {
                     _,
                     _,
                     token_supply,
+                    _,
                 )) = last_event()
                 {
                     assert_eq!(provider, bob);
@@ -1496,6 +1497,7 @@ mod curve {
                     _,
                     _,
                     token_supply,
+                    _,
                 )) = last_event()
                 {
                     assert_eq!(provider, bob);
@@ -1766,6 +1768,7 @@ mod curve {
                                 token_amount,
                                 _,
                                 coin_amount,
+                                _,
                                 _,
                             )) = last_event()
                             {
