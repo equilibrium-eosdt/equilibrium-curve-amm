@@ -248,6 +248,7 @@ pub mod pallet {
         /// Included values are:
         /// - account identifier `T::AccountId`
         /// - pool identifier `PoolId`
+        /// - withdrew admin fees `Vec<T::Balance>`
         ///
         /// [who, pool_id, admin_fees]
         WithdrawAdminFees(T::AccountId, PoolId, Vec<T::Balance>),
