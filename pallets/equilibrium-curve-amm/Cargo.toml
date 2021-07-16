@@ -28,10 +28,11 @@ branch = "v3.0.0eq"
 
 [dependencies.frame-benchmarking]
 default-features = false
-git = "https://github.com/paritytech/substrate.git"
+git = 'https://github.com/equilibrium-eosdt/substrate.git'
 optional = true
 package = "frame-benchmarking"
-tag = "v3.0.0"
+version = "3.0.0"
+branch = "v3.0.0eq"
 
 [dev-dependencies]
 serde = { version = "1.0.101" }
