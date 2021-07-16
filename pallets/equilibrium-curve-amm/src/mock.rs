@@ -289,6 +289,7 @@ impl curve_amm::Config for Test {
     type Number = Number;
     type Precision = Precision;
     type Convert = FixedU128Convert;
+    type WeightInfo = ();
 }
 
 // Build genesis storage according to the mock runtime.

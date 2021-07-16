@@ -37,11 +37,13 @@ extern crate sp_runtime;
 
 pub use pallet::*;
 
+pub mod benchmarking;
 #[cfg(test)]
 mod mock;
 
 #[cfg(test)]
 mod tests;
+pub mod weights;
 
 use crate::traits::CurveAmm;
 use frame_support::codec::{Decode, Encode};
@@ -57,10 +59,13 @@ use sp_std::iter::FromIterator;
 use sp_std::prelude::*;
 use traits::{Assets, CheckedConvert, SliceChecker};
 
+pub use weights::WeightInfo;
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::{traits::CheckedConvert, PoolId, PoolInfo, PoolTokenIndex};
     use crate::traits::{CurveAmm, SliceChecker};
+    use crate::WeightInfo;
     use frame_support::{
         dispatch::{Codec, DispatchResultWithPostInfo},
         pallet_prelude::*,
@@ -108,6 +113,8 @@ pub mod pallet {
             + Convert<Self::Number, Self::Balance>;
         /// Provides a way to perform additional asset checks
         type AssetChecker: SliceChecker<Self::AssetId>;
+        /// Weight information for extrinsics in this pallet
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -151,13 +158,15 @@ pub mod pallet {
         /// - charged fees `Vec<T::Balance>`
         /// - actual invariant `T::Balance`
         /// - actual token supply `T::Balance`
+        /// - minted amount `T::Balance`
         ///
-        /// \[who, pool_id, token_amounts, fees, invariant, token_supply\]
+        /// \[who, pool_id, token_amounts, fees, invariant, token_supply, mint_amount\]
         AddLiquidity(
             T::AccountId,
             PoolId,
             Vec<T::Balance>,
             Vec<T::Balance>,
+            T::Balance,
             T::Balance,
             T::Balance,
         ),
@@ -170,14 +179,16 @@ pub mod pallet {
         /// - amount of sent token `T::Balance`
         /// - index of received token `PoolTokenIndex`
         /// - amount of received token `T::Balance`
+        /// - charged fee `T::Balance`
         ///
-        /// \[who, pool_id, sent_token_index, sent_amount, received_token_index, received_amount\]
+        /// \[who, pool_id, sent_token_index, sent_amount, received_token_index, received_amount, fee\]
         TokenExchange(
             T::AccountId,
             PoolId,
             PoolTokenIndex,
             T::Balance,
             PoolTokenIndex,
+            T::Balance,
             T::Balance,
         ),
         /// Liquidity removed from pool `PoolId` by `T::AccountId` in balanced way.
@@ -204,15 +215,17 @@ pub mod pallet {
         /// - pool identifier `PoolId`
         /// - removed token amounts `Vec<T::Balance>`
         /// - charged fees `Vec<T::Balance>`
-        /// - actual invariant `Balance`
-        /// - actual token supply `Balance`
+        /// - actual invariant `T::Balance`
+        /// - actual token supply `T::Balance`
+        /// - removed LP token amount `T::Balance`
         ///
-        /// \[who, pool_id, token_amounts, fees, invariant, token_supply\]
+        /// \[who, pool_id, token_amounts, fees, invariant, token_supply, burn_amount\]
         RemoveLiquidityImbalance(
             T::AccountId,
             PoolId,
             Vec<T::Balance>,
             Vec<T::Balance>,
+            T::Balance,
             T::Balance,
             T::Balance,
         ),
@@ -225,13 +238,15 @@ pub mod pallet {
         /// - received token index `PoolTokenIndex`
         /// - received token amount `T::Balance`
         /// - actual token supply `T::Balance`
+        /// - charged fee `T::Balance`
         ///
-        /// \[who, pool_id, burn_amount, received_amount, token_supply\]
+        /// \[who, pool_id, burn_amount, received_amount, token_supply, fee\]
         RemoveLiquidityOne(
             T::AccountId,
             PoolId,
             T::Balance,
             PoolTokenIndex,
+            T::Balance,
             T::Balance,
             T::Balance,
         ),
@@ -240,6 +255,7 @@ pub mod pallet {
         /// Included values are:
         /// - account identifier `T::AccountId`
         /// - pool identifier `PoolId`
+        /// - withdrew admin fees `Vec<T::Balance>`
         ///
         /// [who, pool_id, admin_fees]
         WithdrawAdminFees(T::AccountId, PoolId, Vec<T::Balance>),
@@ -278,7 +294,7 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Creates a pool, taking a creation fee from the caller
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::create_pool(assets.len() as u32))]
         pub fn create_pool(
             origin: OriginFor<T>,
             assets: Vec<T::AssetId>,
@@ -293,7 +309,7 @@ pub mod pallet {
         /// Deposit coins into the pool
         /// `amounts` - list of amounts of coins to deposit,
         /// `min_mint_amount` - minimum amout of LP tokens to mint from the deposit.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::add_liquidity(amounts.len() as u32))]
         pub fn add_liquidity(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -309,7 +325,7 @@ pub mod pallet {
         /// `j` - index value of the coin to recieve,
         /// `dx` - amount of `i` being exchanged,
         /// `min_dy` - minimum amount of `j` to receive.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::exchange())]
         pub fn exchange(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -326,7 +342,7 @@ pub mod pallet {
         /// Withdrawal amount are based on current deposit ratios.
         /// `amount` - quantity of LP tokens to burn in the withdrawal,
         /// `min_amounts` - minimum amounts of underlying coins to receive.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::remove_liquidity(min_amounts.len() as u32))]
         pub fn remove_liquidity(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -340,7 +356,7 @@ pub mod pallet {
         /// Withdraw coins from the pool in an imbalanced amount.
         /// `amounts` - list of amounts of underlying coins to withdraw,
         /// `max_burn_amount` - maximum amount of LP token to burn in the withdrawal.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::remove_liquidity_imbalance(amounts.len() as u32))]
         pub fn remove_liquidity_imbalance(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -355,7 +371,7 @@ pub mod pallet {
         /// `token_amount` - amount of LP tokens to burn in the withdrawal,
         /// `i` - index value of the coin to withdraw,
         /// `min_amount` - minimum amount of coin to receive.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::remove_liquidity_one_coin())]
         pub fn remove_liquidity_one_coin(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -374,7 +390,7 @@ pub mod pallet {
         }
 
         /// Withdraw admin fee.
-        #[pallet::weight(10_000 + T::DbWeight::get().reads_writes(1,1))]
+        #[pallet::weight(T::WeightInfo::withdraw_admin_fees())]
         pub fn withdraw_admin_fees(
             origin: OriginFor<T>,
             pool_id: PoolId,
@@ -951,7 +967,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             Error::<T>::WrongAssetAmount
         );
 
-        let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
+        let (provider, pool_id, token_amounts, fees, invariant, token_supply, mint_amount) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
                 let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
 
@@ -1093,6 +1109,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                     fees,
                     Self::convert_number_to_balance(d1),
                     Self::convert_number_to_balance(new_token_supply),
+                    Self::convert_number_to_balance(mint_amount),
                 ))
             })?;
 
@@ -1103,6 +1120,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             fees,
             invariant,
             token_supply,
+            mint_amount,
         ));
 
         Ok(().into())
@@ -1122,7 +1140,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
         ensure!(dx >= b_zero, Error::<T>::WrongAssetAmount);
 
         // sold_id, tokens_sold, bought_id, tokens_bought
-        let (provider, pool_id, dy) =
+        let (provider, pool_id, dy, fee) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
                 let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
 
@@ -1183,10 +1201,15 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 Self::transfer_liquidity_into_pool(pool, &who, i, dx)?;
                 Self::transfer_liquidity_from_pool(pool, j, &who, dy)?;
 
-                Ok((who.clone(), pool_id, dy))
+                Ok((
+                    who.clone(),
+                    pool_id,
+                    dy,
+                    Self::convert_number_to_balance(dy_fee),
+                ))
             })?;
 
-        Self::deposit_event(Event::TokenExchange(provider, pool_id, i, dx, j, dy));
+        Self::deposit_event(Event::TokenExchange(provider, pool_id, i, dx, j, dy, fee));
 
         Ok(().into())
     }
@@ -1314,7 +1337,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             Error::<T>::WrongAssetAmount
         );
 
-        let (provider, pool_id, token_amounts, fees, invariant, token_supply) =
+        let (provider, pool_id, token_amounts, fees, invariant, token_supply, burn_amount) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
                 let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
 
@@ -1422,11 +1445,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
                     .checked_sub(&token_amount)
                     .ok_or(Error::<T>::Math)?;
 
-                T::Assets::burn(
-                    pool.pool_asset,
-                    &who,
-                    Self::convert_number_to_balance(token_amount),
-                )?;
+                let burn_amount = Self::convert_number_to_balance(token_amount);
+
+                T::Assets::burn(pool.pool_asset, &who, burn_amount)?;
 
                 // Ensure that for all tokens we have sufficient amount
                 for i in 0..n_coins {
@@ -1455,6 +1476,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                     fees,
                     Self::convert_number_to_balance(d1),
                     Self::convert_number_to_balance(new_token_supply),
+                    burn_amount,
                 ))
             })?;
 
@@ -1465,6 +1487,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             fees,
             invariant,
             token_supply,
+            burn_amount,
         ));
 
         Ok(().into())
@@ -1485,7 +1508,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
 
         let n_token_amount = Self::convert_balance_to_number(token_amount);
 
-        let (provider, pool_id, burn_amount, dy, new_token_supply) =
+        let (provider, pool_id, burn_amount, dy, new_token_supply, dy_fee) =
             Pools::<T>::try_mutate(pool_id, |pool| -> Result<_, DispatchError> {
                 let pool = pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
 
@@ -1552,6 +1575,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                     token_amount,
                     b_dy,
                     Self::convert_number_to_balance(new_token_supply),
+                    Self::convert_number_to_balance(dy_fee),
                 ))
             })?;
 
@@ -1562,6 +1586,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             pti_i,
             dy,
             new_token_supply,
+            dy_fee,
         ));
 
         Ok(().into())
@@ -1654,6 +1679,9 @@ pub mod traits {
         fn balance(asset: AssetId, who: &AccountId) -> Balance;
         /// Returns total issuance of the specified asset
         fn total_issuance(asset: AssetId) -> Balance;
+        /// For benchmarking purposes only
+        #[cfg(feature = "runtime-benchmarks")]
+        fn create_benchmark_asset() -> AssetId;
     }
 
     /// Generic conversion trait. Unlike `sp_runtime::traits::Convert` it supports cases
