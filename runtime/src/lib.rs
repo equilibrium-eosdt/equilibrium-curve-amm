@@ -508,6 +508,8 @@ impl equilibrium_curve_amm::Config for Runtime {
     type Convert = FixedU128Convert;
     type AssetChecker = ();
     type WeightInfo = crate::curve_amm_weights::WeightInfo<Runtime>;
+    #[cfg(feature = "runtime-benchmarks")]
+    type BenchmarkingInit = ();
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
