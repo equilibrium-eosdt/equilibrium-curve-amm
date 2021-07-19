@@ -1,6 +1,6 @@
 [package]
 name = "equilibrium-curve-amm-rpc-runtime-api"
-version = "0.1.5"
+version = "0.1.6"
 authors = ["equilibrium"]
 edition = "2018"
 license = "Apache-2.0"

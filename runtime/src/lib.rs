@@ -705,6 +705,13 @@ impl_runtime_apis! {
         ) -> Option<Balance> {
             CurveAmm::get_dy(pool_id, i, j, dx).ok()
         }
+        fn get_withdraw_one_coin(
+            pool_id: equilibrium_curve_amm::PoolId,
+            burn_amount: Balance,
+            i: equilibrium_curve_amm::PoolTokenIndex
+        ) -> Option<Balance> {
+            CurveAmm::get_withdraw_one_coin(pool_id, burn_amount, i).ok()
+        }
     }
 
     #[cfg(feature = "runtime-benchmarks")]
