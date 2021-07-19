@@ -64,6 +64,8 @@ pub use weights::WeightInfo;
 #[frame_support::pallet]
 pub mod pallet {
     use super::{traits::CheckedConvert, PoolId, PoolInfo, PoolTokenIndex};
+    #[cfg(feature = "runtime-benchmarks")]
+    use crate::traits::BenchmarkingInit;
     use crate::traits::{CurveAmm, SliceChecker};
     use crate::WeightInfo;
     use frame_support::{
@@ -115,6 +117,8 @@ pub mod pallet {
         type AssetChecker: SliceChecker<Self::AssetId>;
         /// Weight information for extrinsics in this pallet
         type WeightInfo: WeightInfo;
+        #[cfg(feature = "runtime-benchmarks")]
+        type BenchmarkingInit: BenchmarkingInit;
     }
 
     #[pallet::pallet]
@@ -1805,6 +1809,16 @@ pub mod traits {
             Ok(())
         }
     }
+
+    /// Special trait for runtime specific initialization
+    #[cfg(feature = "runtime-benchmarks")]
+    pub trait BenchmarkingInit {
+        /// Initialization of a runtime before `withdraw_admin_fees` call
+        fn init_withdraw_admin_fees() {}
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    impl BenchmarkingInit for () {}
 }
 
 /// Type that represents index type of token in the pool passed from the outside as an extrinsic

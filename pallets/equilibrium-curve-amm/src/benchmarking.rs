@@ -1,6 +1,7 @@
 #![cfg(feature = "runtime-benchmarks")]
 
 use super::*;
+use crate::traits::BenchmarkingInit;
 use frame_benchmarking::{account, benchmarks};
 use frame_system::{pallet_prelude::OriginFor, Module as System, RawOrigin};
 use sp_runtime::Permill;
@@ -284,6 +285,7 @@ benchmarks! {
             Curve::<T>::exchange(origin.clone(), pool_id, i, j, amount, min_amount_to_receive).unwrap();
         }
 
+        T::BenchmarkingInit::init_withdraw_admin_fees();
     }:  _(RawOrigin::Signed(depositor), pool_id)
     verify{
         let pool = get_pool_info::<T>(pool_id);
