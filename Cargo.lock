@@ -1332,7 +1332,7 @@ dependencies = [
 
 [[package]]
 name = "equilibrium-curve-amm-rpc"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "equilibrium-curve-amm-rpc-runtime-api",
  "jsonrpc-core",
@@ -1348,7 +1348,7 @@ dependencies = [
 
 [[package]]
 name = "equilibrium-curve-amm-rpc-runtime-api"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "equilibrium-curve-amm",
  "parity-scale-codec",
