@@ -88,9 +88,9 @@ pub mod pallet {
         type AssetId: Parameter + Ord + Copy;
         /// The balance type of an account
         type Balance: Parameter + Codec + Copy + Ord + CheckedAdd + CheckedSub;
-        /// External implementation for required opeartions with assets
+        /// External implementation for required operations with assets
         type Assets: super::traits::Assets<Self::AssetId, Self::Balance, Self::AccountId>;
-        /// Standart balances pallet for utility token or adapter
+        /// Standard balances pallet for utility token or adapter
         type Currency: Currency<Self::AccountId, Balance = Self::Balance>;
         /// Anti ddos fee for pool creation
         #[pallet::constant]
@@ -244,7 +244,7 @@ pub mod pallet {
         /// - actual token supply `T::Balance`
         /// - charged fee `T::Balance`
         ///
-        /// \[who, pool_id, burn_amount, received_amount, token_supply, fee\]
+        /// \[who, pool_id, burn_amount, received_token, received_amount, token_supply, fee\]
         RemoveLiquidityOne(
             T::AccountId,
             PoolId,
@@ -312,7 +312,7 @@ pub mod pallet {
 
         /// Deposit coins into the pool
         /// `amounts` - list of amounts of coins to deposit,
-        /// `min_mint_amount` - minimum amout of LP tokens to mint from the deposit.
+        /// `min_mint_amount` - minimum amount of LP tokens to mint from the deposit.
         #[pallet::weight(T::WeightInfo::add_liquidity(amounts.len() as u32))]
         pub fn add_liquidity(
             origin: OriginFor<T>,
@@ -326,7 +326,7 @@ pub mod pallet {
 
         /// Perform an exchange between two coins.
         /// `i` - index value of the coin to send,
-        /// `j` - index value of the coin to recieve,
+        /// `j` - index value of the coin to receive,
         /// `dx` - amount of `i` being exchanged,
         /// `min_dy` - minimum amount of `j` to receive.
         #[pallet::weight(T::WeightInfo::exchange())]
