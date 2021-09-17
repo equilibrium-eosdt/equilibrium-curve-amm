@@ -508,6 +508,7 @@ impl equilibrium_curve_amm::Config for Runtime {
     type Convert = FixedU128Convert;
     type AssetChecker = ();
     type WeightInfo = crate::curve_amm_weights::WeightInfo<Runtime>;
+    type OnPoolCreated = ();
     #[cfg(feature = "runtime-benchmarks")]
     type BenchmarkingInit = ();
 }

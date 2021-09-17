@@ -26,6 +26,9 @@ fn create_pool_successful() {
             Permill::one(),
             Permill::one(),
         ));
+        let on_pool_created_called = get_on_pool_created_called();
+        assert_eq!(on_pool_created_called.len(), 1);
+        assert_eq!(on_pool_created_called[&0], 1);
     });
 }
 

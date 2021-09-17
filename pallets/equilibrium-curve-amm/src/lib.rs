@@ -57,7 +57,7 @@ use sp_runtime::Permill;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::iter::FromIterator;
 use sp_std::prelude::*;
-use traits::{Assets, CheckedConvert, SliceChecker};
+use traits::{Assets, CheckedConvert, SliceChecker, OnPoolCreated};
 
 pub use weights::WeightInfo;
 
@@ -115,6 +115,8 @@ pub mod pallet {
             + Convert<Self::Number, Self::Balance>;
         /// Provides a way to perform additional asset checks
         type AssetChecker: SliceChecker<Self::AssetId>;
+        /// Event on new pool creation
+        type OnPoolCreated: super::traits::OnPoolCreated;
         /// Weight information for extrinsics in this pallet
         type WeightInfo: WeightInfo;
         #[cfg(feature = "runtime-benchmarks")]
@@ -952,6 +954,8 @@ impl<T: Config> CurveAmm for Pallet<T> {
             Ok(pool_id)
         })?;
 
+        T::OnPoolCreated::on_pool_created(pool_id);
+
         Self::deposit_event(Event::CreatePool(who.clone(), pool_id));
 
         Ok(().into())
@@ -1657,6 +1661,7 @@ pub mod traits {
     use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo};
     use sp_runtime::Permill;
     use sp_std::vec::Vec;
+    use impl_trait_for_tuples::impl_for_tuples;
 
     /// Pallet equilibrium_curve_amm should interact with custom Assets.
     /// In order to do this it relies on `Assets` trait implementation.
@@ -1796,6 +1801,21 @@ pub mod traits {
             who: &Self::AccountId,
             pool_id: PoolId,
         ) -> DispatchResultWithPostInfo;
+    }
+
+    /// Notification about new pool created. 
+    pub trait OnPoolCreated {
+        fn on_pool_created(pool_id: PoolId);
+    }
+
+    #[impl_for_tuples(5)]
+    impl OnPoolCreated for Tuple
+    {
+        fn on_pool_created(
+            pool_id: PoolId
+        ) {
+            for_tuples!( #( Tuple::on_pool_created(pool_id); )* );
+        }
     }
 
     /// Checks if all items in the slice are met some condition
