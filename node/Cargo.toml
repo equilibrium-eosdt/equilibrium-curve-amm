@@ -47,8 +47,8 @@ substrate-frame-rpc-system = { version = "4.0.0-dev", git = 'https://github.com/
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
 
 # These dependencies are used for runtime benchmarking
-# frame-benchmarking = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
-# frame-benchmarking-cli = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+frame-benchmarking = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+frame-benchmarking-cli = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
 
 equilibrium-curve-amm-rpc = { version = "0.1.5", path = "../pallets/equilibrium-curve-amm/rpc"}
 
