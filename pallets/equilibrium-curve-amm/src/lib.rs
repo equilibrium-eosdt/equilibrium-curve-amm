@@ -71,11 +71,11 @@ pub mod pallet {
     use frame_support::{
         dispatch::{Codec, DispatchResultWithPostInfo},
         pallet_prelude::*,
-        traits::{Currency, OnUnbalanced},
+        traits::{Currency, OnUnbalanced}, PalletId
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert};
-    use sp_runtime::{ModuleId, Permill};
+    use sp_runtime::{Permill};
     use sp_std::prelude::*;
 
     /// Config of Equilibrium Curve Amm pallet
@@ -101,7 +101,7 @@ pub mod pallet {
         >;
         /// Module account
         #[pallet::constant]
-        type ModuleId: Get<ModuleId>;
+        type PalletId: Get<PalletId>;
 
         /// The number type for underlying calculations
         type Number: Parameter + CheckedAdd + CheckedSub + CheckedMul + CheckedDiv + Copy + Eq + Ord;
@@ -840,7 +840,7 @@ impl<T: Config> Pallet<T> {
         T::Assets::transfer(
             pool.assets[destination_asset_index],
             source,
-            &T::ModuleId::get().into_account(),
+            &T::PalletId::get().into_account(),
             amount,
         )?;
 
@@ -859,7 +859,7 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         T::Assets::transfer(
             pool.assets[source_asset_index],
-            &T::ModuleId::get().into_account(),
+            &T::PalletId::get().into_account(),
             destination,
             amount,
         )?;
@@ -1198,7 +1198,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 );
 
                 ensure!(
-                    T::Assets::balance(pool.assets[j], &T::ModuleId::get().into_account()) >= dy,
+                    T::Assets::balance(pool.assets[j], &T::PalletId::get().into_account()) >= dy,
                     Error::<T>::InsufficientFunds
                 );
 
@@ -1295,7 +1295,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 // Ensure that for all tokens we have sufficient amount
                 for i in 0..n_coins {
                     ensure!(
-                        T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account())
+                        T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account())
                             >= amounts[i],
                         Error::<T>::InsufficientFunds
                     );
@@ -1456,7 +1456,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 // Ensure that for all tokens we have sufficient amount
                 for i in 0..n_coins {
                     ensure!(
-                        T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account())
+                        T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account())
                             >= amounts[i],
                         Error::<T>::InsufficientFunds
                     );
@@ -1565,7 +1565,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 let b_dy = Self::convert_number_to_balance(dy);
 
                 ensure!(
-                    T::Assets::balance(pool.assets[i], &T::ModuleId::get().into_account()) >= b_dy,
+                    T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account()) >= b_dy,
                     Error::<T>::InsufficientFunds
                 );
 

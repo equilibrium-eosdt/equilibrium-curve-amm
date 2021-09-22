@@ -12,44 +12,44 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
 
-pallet-aura = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-pallet-assets = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-pallet-balances = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-frame-support = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-pallet-grandpa = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-pallet-randomness-collective-flip = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-pallet-sudo = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-frame-system = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-pallet-timestamp = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-pallet-transaction-payment = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-frame-executive = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
+pallet-aura = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+pallet-assets = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+pallet-balances = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+pallet-grandpa = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+pallet-randomness-collective-flip = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+pallet-sudo = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+frame-executive = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
 serde = { version = "1.0.101", optional = true, features = ["derive"] }
-sp-api = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-block-builder = { git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq", default-features = false, version = "3.0.0"}
-sp-consensus-aura = { version = "0.9.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-core = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-inherents = { git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq", default-features = false, version = "3.0.0"}
-sp-offchain = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-runtime = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-session = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-std = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-transaction-pool = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-version = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
+sp-api = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+sp-block-builder = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9", default-features = false, version = "4.0.0-dev"}
+sp-consensus-aura = { version = "0.10.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+sp-core = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+sp-inherents = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9", default-features = false, version = "4.0.0-dev"}
+sp-offchain = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+sp-runtime = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+sp-session = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+sp-std = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+sp-version = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
 
 # Used for the node's RPCs
-frame-system-rpc-runtime-api = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-pallet-transaction-payment-rpc-runtime-api = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
+frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
+pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
 equilibrium-curve-amm-rpc-runtime-api = { version = "0.1.5", default-features = false, path = "../pallets/equilibrium-curve-amm/rpc/runtime-api", package = "equilibrium-curve-amm-rpc-runtime-api" }
 
 # Used for runtime benchmarking
-frame-benchmarking = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq", optional = true }
-frame-system-benchmarking = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq", optional = true }
+frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9", optional = true }
+frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9", optional = true }
 hex-literal = { version = "0.3.1", optional = true }
 
 equilibrium-curve-amm = { version = "0.1.8", default-features = false, path = "../pallets/equilibrium-curve-amm", package = "equilibrium-curve-amm" }
 
 [build-dependencies]
-substrate-wasm-builder = { version = "4.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
+substrate-wasm-builder = { version = "5.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.9" }
 
 [features]
 default = ["std"]
