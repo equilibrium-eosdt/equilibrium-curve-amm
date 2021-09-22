@@ -275,6 +275,26 @@ type Imbalance = <pallet_balances::Pallet<Test> as Currency<AccountId>>::Negativ
 
 impl OnUnbalanced<Imbalance> for EmptyUnbalanceHandler {}
 
+thread_local! {
+    static ON_POOL_CREATED_CALLED: RefCell<HashMap<PoolId, u32>> = RefCell::new(HashMap::new());
+}
+
+pub fn get_on_pool_created_called() -> HashMap<PoolId, u32> {
+    ON_POOL_CREATED_CALLED.with(|v| v.borrow().clone())
+}
+
+pub struct OnPoolCreated;
+impl super::traits::OnPoolCreated for OnPoolCreated {
+    fn on_pool_created(pool_id: PoolId) {
+        ON_POOL_CREATED_CALLED.with(|pool_created_called| {
+            let mut mut_pool_created_called = pool_created_called.borrow_mut();
+            mut_pool_created_called.entry(pool_id)
+                .and_modify(|v| *v = *v + 1u32)
+                .or_insert(1);
+        });
+    }
+}
+
 impl curve_amm::Config for Test {
     type Event = Event;
     type AssetId = i64;
@@ -285,6 +305,7 @@ impl curve_amm::Config for Test {
     type OnUnbalanced = EmptyUnbalanceHandler;
     type ModuleId = CurveAmmModuleId;
     type AssetChecker = ();
+    type OnPoolCreated = OnPoolCreated;
 
     type Number = Number;
     type Precision = Precision;
