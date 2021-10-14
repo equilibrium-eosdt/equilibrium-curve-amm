@@ -1311,6 +1311,7 @@ dependencies = [
  "impl-trait-for-tuples 0.1.3",
  "pallet-balances",
  "parity-scale-codec",
+ "scale-info",
  "serde",
  "sp-core",
  "sp-io",

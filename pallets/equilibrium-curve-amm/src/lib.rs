@@ -144,7 +144,6 @@ pub mod pallet {
 
     /// Event type for Equilibrium Curve AMM pallet
     #[pallet::event]
-    #[pallet::metadata(T::AccountId = "AccountId")]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
         /// Pool with specified id `PoolId` was created successfully by `T::AccountId`.
@@ -1849,7 +1848,7 @@ pub type PoolTokenIndex = u32;
 pub type PoolId = u32;
 
 /// Storage record type for a pool
-#[derive(Encode, Decode, Clone, Default, PartialEq, Eq, Debug)]
+#[derive(Encode, Decode, Clone, Default, PartialEq, Eq, Debug, scale_info::TypeInfo)]
 pub struct PoolInfo<AccountId, AssetId, Number, Balance> {
     /// Owner of pool
     pub owner: AccountId,
