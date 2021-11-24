@@ -16,9 +16,9 @@ codec = { package = "parity-scale-codec", version = "2.0.0" }
 jsonrpc-core = "15.1.0"
 jsonrpc-core-client = "15.1.0"
 jsonrpc-derive = "15.1.0"
-sp-core = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-rpc = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-runtime = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-api = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
-sp-blockchain = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "v3.0.0eq" }
+sp-core = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "eq_prefix_68" }
+sp-rpc = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "eq_prefix_68" }
+sp-runtime = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "eq_prefix_68" }
+sp-api = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "eq_prefix_68" }
+sp-blockchain = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "eq_prefix_68" }
 equilibrium-curve-amm-rpc-runtime-api = { version = "0.1.6", path = "./runtime-api" }

@@ -18,13 +18,13 @@ codec = { package = "parity-scale-codec", version = "2.0.0", default-features = 
 default-features = false
 version = "3.0.0"
 git = 'https://github.com/equilibrium-eosdt/substrate.git'
-branch = "v3.0.0eq"
+branch = "eq_prefix_68"
 
 [dependencies.frame-system]
 default-features = false
 version = "3.0.0"
 git = 'https://github.com/equilibrium-eosdt/substrate.git'
-branch = "v3.0.0eq"
+branch = "eq_prefix_68"
 
 [dependencies.frame-benchmarking]
 default-features = false
@@ -32,7 +32,7 @@ git = 'https://github.com/equilibrium-eosdt/substrate.git'
 optional = true
 package = "frame-benchmarking"
 version = "3.0.0"
-branch = "v3.0.0eq"
+branch = "eq_prefix_68"
 
 [dev-dependencies]
 serde = { version = "1.0.101" }
@@ -41,31 +41,31 @@ serde = { version = "1.0.101" }
 default-features = false
 version = "3.0.0"
 git = 'https://github.com/equilibrium-eosdt/substrate.git'
-branch = "v3.0.0eq"
+branch = "eq_prefix_68"
 
 [dev-dependencies.sp-io]
 default-features = false
 version = "3.0.0"
 git = 'https://github.com/equilibrium-eosdt/substrate.git'
-branch = "v3.0.0eq"
+branch = "eq_prefix_68"
 
 [dependencies.sp-std]
 default-features = false
 version = "3.0.0"
 git = 'https://github.com/equilibrium-eosdt/substrate.git'
-branch = "v3.0.0eq"
+branch = "eq_prefix_68"
 
 [dependencies.sp-runtime]
 default-features = false
 version = "3.0.0"
 git = 'https://github.com/equilibrium-eosdt/substrate.git'
-branch = "v3.0.0eq"
+branch = "eq_prefix_68"
 
 [dev-dependencies.pallet-balances]
 default-features = false
 version = "3.0.0"
 git = 'https://github.com/equilibrium-eosdt/substrate.git'
-branch = "v3.0.0eq"
+branch = "eq_prefix_68"
 
 [features]
 default = ["std"]
