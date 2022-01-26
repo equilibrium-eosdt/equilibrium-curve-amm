@@ -1,11 +1,11 @@
 [profile.release]
-panic = 'unwind'
+panic = "unwind"
 
 [workspace]
 members = [
-    'node',
-    'pallets/equilibrium-curve-amm',
-    'pallets/equilibrium-curve-amm/rpc',
-    'pallets/equilibrium-curve-amm/rpc/runtime-api',
-    'runtime',
+    "node",
+    "pallets/equilibrium-curve-amm",
+    "pallets/equilibrium-curve-amm/rpc",
+    "pallets/equilibrium-curve-amm/rpc/runtime-api",
+    "runtime",
 ]

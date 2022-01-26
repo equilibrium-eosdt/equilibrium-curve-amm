@@ -288,7 +288,8 @@ impl super::traits::OnPoolCreated for OnPoolCreated {
     fn on_pool_created(pool_id: PoolId) {
         ON_POOL_CREATED_CALLED.with(|pool_created_called| {
             let mut mut_pool_created_called = pool_created_called.borrow_mut();
-            mut_pool_created_called.entry(pool_id)
+            mut_pool_created_called
+                .entry(pool_id)
                 .and_modify(|v| *v = *v + 1u32)
                 .or_insert(1);
         });

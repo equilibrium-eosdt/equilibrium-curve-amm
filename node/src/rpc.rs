@@ -36,9 +36,9 @@ where
     C::Api: BlockBuilder<Block>,
     P: TransactionPool + 'static,
 {
+    use equilibrium_curve_amm_rpc::{EquilibriumCurveAmm, EquilibriumCurveAmmApi};
     use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApi};
     use substrate_frame_rpc_system::{FullSystem, SystemApi};
-    use equilibrium_curve_amm_rpc::{EquilibriumCurveAmm, EquilibriumCurveAmmApi};
 
     let mut io = jsonrpc_core::IoHandler::default();
     let FullDeps {
@@ -61,9 +61,9 @@ where
     // `YourRpcStruct` should have a reference to a client, which is needed
     // to call into the runtime.
     // `io.extend_with(YourRpcTrait::to_delegate(YourRpcStruct::new(ReferenceToClient, ...)));`
-    io.extend_with(EquilibriumCurveAmmApi::to_delegate(EquilibriumCurveAmm::new(
-        client.clone(),
-    )));
+    io.extend_with(EquilibriumCurveAmmApi::to_delegate(
+        EquilibriumCurveAmm::new(client.clone()),
+    ));
 
     io
 }

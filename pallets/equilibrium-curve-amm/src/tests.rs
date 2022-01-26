@@ -186,7 +186,9 @@ fn withdraw_admin_fee_several_polls_with_common_asset() {
             asset_d,
             asset_e,
             asset_f,
-        ].iter() {
+        ]
+        .iter()
+        {
             assert_ok!(TestAssets::mint(asset, &owner, base_amount));
         }
 

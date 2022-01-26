@@ -57,7 +57,7 @@ use sp_runtime::Permill;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::iter::FromIterator;
 use sp_std::prelude::*;
-use traits::{Assets, CheckedConvert, SliceChecker, OnPoolCreated};
+use traits::{Assets, CheckedConvert, OnPoolCreated, SliceChecker};
 
 pub use weights::WeightInfo;
 
@@ -71,11 +71,12 @@ pub mod pallet {
     use frame_support::{
         dispatch::{Codec, DispatchResultWithPostInfo},
         pallet_prelude::*,
-        traits::{Currency, OnUnbalanced}, PalletId
+        traits::{Currency, OnUnbalanced},
+        PalletId,
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert};
-    use sp_runtime::{Permill};
+    use sp_runtime::Permill;
     use sp_std::prelude::*;
 
     /// Config of Equilibrium Curve Amm pallet
@@ -1658,9 +1659,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
 pub mod traits {
     use crate::{PoolId, PoolInfo, PoolTokenIndex};
     use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo};
+    use impl_trait_for_tuples::impl_for_tuples;
     use sp_runtime::Permill;
     use sp_std::vec::Vec;
-    use impl_trait_for_tuples::impl_for_tuples;
 
     /// Pallet equilibrium_curve_amm should interact with custom Assets.
     /// In order to do this it relies on `Assets` trait implementation.
@@ -1802,17 +1803,14 @@ pub mod traits {
         ) -> DispatchResultWithPostInfo;
     }
 
-    /// Notification about new pool created. 
+    /// Notification about new pool created.
     pub trait OnPoolCreated {
         fn on_pool_created(pool_id: PoolId);
     }
 
     #[impl_for_tuples(5)]
-    impl OnPoolCreated for Tuple
-    {
-        fn on_pool_created(
-            pool_id: PoolId
-        ) {
+    impl OnPoolCreated for Tuple {
+        fn on_pool_created(pool_id: PoolId) {
             for_tuples!( #( Tuple::on_pool_created(pool_id); )* );
         }
     }
