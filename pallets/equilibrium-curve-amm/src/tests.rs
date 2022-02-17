@@ -1184,6 +1184,7 @@ mod curve {
                     token_amounts,
                     _,
                     token_supply,
+                    _,
                 )) = last_event()
                 {
                     assert_eq!(provider, bob);

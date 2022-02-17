@@ -205,6 +205,7 @@ pub mod pallet {
         /// - removed token amounts `Vec<T::Balance>`
         /// - charged fees `Vec<T::Balance>`
         /// - actual token supply `T::Balance`
+        /// - removed LP token amount `T::Balance`
         ///
         /// \[who, pool_id, token_amounts, fees, token_supply\]
         RemoveLiquidity(
@@ -212,6 +213,7 @@ pub mod pallet {
             PoolId,
             Vec<T::Balance>,
             Vec<T::Balance>,
+            T::Balance,
             T::Balance,
         ),
         /// Liquidity removed from pool `PoolId` by `T::AccountId` in imbalanced way.
@@ -1326,6 +1328,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             token_amounts,
             fees,
             token_supply,
+            amount,
         ));
 
         Ok(().into())
