@@ -1,6 +1,6 @@
 [package]
 name = "equilibrium-curve-amm-rpc"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["equilibrium"]
 edition = "2018"
 license = "Apache-2.0"
@@ -21,4 +21,4 @@ sp-rpc = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substr
 sp-runtime = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "eq_prefix_68" }
 sp-api = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "eq_prefix_68" }
 sp-blockchain = { version = "3.0.0", git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "eq_prefix_68" }
-equilibrium-curve-amm-rpc-runtime-api = { version = "0.1.6", path = "./runtime-api" }
+equilibrium-curve-amm-rpc-runtime-api = { version = "0.1.7", path = "./runtime-api" }
