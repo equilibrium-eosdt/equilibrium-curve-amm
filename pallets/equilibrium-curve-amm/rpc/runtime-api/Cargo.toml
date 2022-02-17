@@ -15,7 +15,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 sp-api = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "eq_prefix_68" }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
 sp-runtime = { version = "3.0.0", default-features = false, git = 'https://github.com/equilibrium-eosdt/substrate.git', branch = "eq_prefix_68" }
-equilibrium-curve-amm = { version = "0.2.0", default-features = false, path = "../../../equilibrium-curve-amm" }
+equilibrium-curve-amm = { version = "0.2.1", default-features = false, path = "../../../equilibrium-curve-amm" }
 
 [features]
 default = ["std"]
