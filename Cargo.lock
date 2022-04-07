@@ -1295,7 +1295,7 @@ checksum = "68b91989ae21441195d7d9b9993a2f9295c7e1a8c96255d8b729accddc124797"
 
 [[package]]
 name = "equilibrium-curve-amm"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "frame-benchmarking 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=polkadot-v0.9.17)",
  "frame-support 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=polkadot-v0.9.17)",
@@ -1313,7 +1313,7 @@ dependencies = [
 
 [[package]]
 name = "equilibrium-curve-amm-rpc"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "equilibrium-curve-amm-rpc-runtime-api",
  "jsonrpc-core 18.0.0",
@@ -1329,7 +1329,7 @@ dependencies = [
 
 [[package]]
 name = "equilibrium-curve-amm-rpc-runtime-api"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "equilibrium-curve-amm",
  "parity-scale-codec",

@@ -1,6 +1,6 @@
 [package]
 name = "equilibrium-curve-amm-rpc"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["equilibrium"]
 edition = "2018"
 license = "Apache-2.0"
@@ -21,4 +21,4 @@ sp-rpc = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v
 sp-runtime = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.17" }
 sp-api = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.17" }
 sp-blockchain = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.17" }
-equilibrium-curve-amm-rpc-runtime-api = { version = "0.1.6", path = "./runtime-api" }
+equilibrium-curve-amm-rpc-runtime-api = { version = "0.1.7", path = "./runtime-api" }

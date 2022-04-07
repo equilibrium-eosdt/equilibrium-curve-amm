@@ -213,6 +213,7 @@ pub mod pallet {
             Vec<T::Balance>,
             Vec<T::Balance>,
             T::Balance,
+            T::Balance,
         ),
         /// Liquidity removed from pool `PoolId` by `T::AccountId` in imbalanced way.
         ///
@@ -1326,6 +1327,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
             token_amounts,
             fees,
             token_supply,
+            amount,
         ));
 
         Ok(().into())
