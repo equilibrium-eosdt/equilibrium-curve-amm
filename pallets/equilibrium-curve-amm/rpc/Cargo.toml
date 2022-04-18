@@ -16,9 +16,9 @@ codec = { package = "parity-scale-codec", version = "2.0.0" }
 jsonrpc-core = "18.0.0"
 jsonrpc-core-client = "18.0.0"
 jsonrpc-derive = "18.0.0"
-sp-core = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.17" }
-sp-rpc = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.17" }
-sp-runtime = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.17" }
-sp-api = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.17" }
-sp-blockchain = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.17" }
+sp-core = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.18" }
+sp-rpc = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.18" }
+sp-runtime = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.18" }
+sp-api = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.18" }
+sp-blockchain = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.18" }
 equilibrium-curve-amm-rpc-runtime-api = { version = "0.1.7", path = "./runtime-api" }
