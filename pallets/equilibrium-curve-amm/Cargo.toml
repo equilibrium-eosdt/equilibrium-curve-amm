@@ -29,9 +29,9 @@ branch = "polkadot-v0.9.24"
 [dependencies.frame-benchmarking]
 default-features = false
 git = 'https://github.com/paritytech/substrate'
+branch = "polkadot-v0.9.24"
 optional = true
 package = "frame-benchmarking"
-branch = "polkadot-v0.9.24"
 
 [dev-dependencies]
 serde = { version = "1.0.101" }

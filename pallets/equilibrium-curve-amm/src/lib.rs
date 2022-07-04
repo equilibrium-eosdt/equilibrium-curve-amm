@@ -51,7 +51,7 @@ use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithP
 use frame_support::ensure;
 use frame_support::traits::{Currency, ExistenceRequirement, Get, OnUnbalanced, WithdrawReasons};
 use sp_runtime::traits::{
-    AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert,
+    CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert, AccountIdConversion,
 };
 use sp_runtime::Permill;
 use sp_std::collections::btree_set::BTreeSet;
@@ -77,6 +77,7 @@ pub mod pallet {
     use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert};
     use sp_runtime::{Permill};
     use sp_std::prelude::*;
+    use core::convert::TryInto;
 
     /// Config of Equilibrium Curve Amm pallet
     #[pallet::config]
@@ -843,7 +844,7 @@ impl<T: Config> Pallet<T> {
         T::Assets::transfer(
             pool.assets[destination_asset_index],
             source,
-            &T::PalletId::get().into_account(),
+            &T::PalletId::get().into_account_truncating(),
             amount,
         )?;
 
@@ -862,7 +863,7 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         T::Assets::transfer(
             pool.assets[source_asset_index],
-            &T::PalletId::get().into_account(),
+            &T::PalletId::get().into_account_truncating(),
             destination,
             amount,
         )?;
@@ -1203,7 +1204,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 );
 
                 ensure!(
-                    T::Assets::balance(pool.assets[j], &T::PalletId::get().into_account()) >= dy,
+                    T::Assets::balance(pool.assets[j], &T::PalletId::get().into_account_truncating()) >= dy,
                     Error::<T>::InsufficientFunds
                 );
 
@@ -1300,7 +1301,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 // Ensure that for all tokens we have sufficient amount
                 for i in 0..n_coins {
                     ensure!(
-                        T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account())
+                        T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account_truncating())
                             >= amounts[i],
                         Error::<T>::InsufficientFunds
                     );
@@ -1462,7 +1463,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 // Ensure that for all tokens we have sufficient amount
                 for i in 0..n_coins {
                     ensure!(
-                        T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account())
+                        T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account_truncating())
                             >= amounts[i],
                         Error::<T>::InsufficientFunds
                     );
@@ -1571,7 +1572,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 let b_dy = Self::convert_number_to_balance(dy);
 
                 ensure!(
-                    T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account()) >= b_dy,
+                    T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account_truncating()) >= b_dy,
                     Error::<T>::InsufficientFunds
                 );
 

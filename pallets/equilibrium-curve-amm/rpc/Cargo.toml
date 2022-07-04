@@ -19,6 +19,6 @@ jsonrpc-derive = "18.0.0"
 sp-core = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.24" }
 sp-rpc = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.24" }
 sp-runtime = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.24" }
-sp-api = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.24" }
-sp-blockchain = { version = "4.0.0-dev", git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.24" }
+sp-api = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.24" }
+sp-blockchain = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.24" }
 equilibrium-curve-amm-rpc-runtime-api = { version = "0.1.7", path = "./runtime-api" }
