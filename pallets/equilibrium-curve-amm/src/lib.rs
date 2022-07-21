@@ -51,13 +51,13 @@ use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithP
 use frame_support::ensure;
 use frame_support::traits::{Currency, ExistenceRequirement, Get, OnUnbalanced, WithdrawReasons};
 use sp_runtime::traits::{
-    CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert, AccountIdConversion,
+    AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert,
 };
 use sp_runtime::Permill;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::iter::FromIterator;
 use sp_std::prelude::*;
-use traits::{Assets, CheckedConvert, SliceChecker, OnPoolCreated};
+use traits::{Assets, CheckedConvert, OnPoolCreated, SliceChecker};
 
 pub use weights::WeightInfo;
 
@@ -68,16 +68,17 @@ pub mod pallet {
     use crate::traits::BenchmarkingInit;
     use crate::traits::{CurveAmm, SliceChecker};
     use crate::WeightInfo;
+    use core::convert::TryInto;
     use frame_support::{
         dispatch::{Codec, DispatchResultWithPostInfo},
         pallet_prelude::*,
-        traits::{Currency, OnUnbalanced}, PalletId
+        traits::{Currency, OnUnbalanced},
+        PalletId,
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert};
-    use sp_runtime::{Permill};
+    use sp_runtime::Permill;
     use sp_std::prelude::*;
-    use core::convert::TryInto;
 
     /// Config of Equilibrium Curve Amm pallet
     #[pallet::config]
@@ -126,7 +127,7 @@ pub mod pallet {
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
-	#[pallet::without_storage_info]
+    #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
     /// Current number of pools (also ID for the next created pool)
@@ -206,8 +207,9 @@ pub mod pallet {
         /// - removed token amounts `Vec<T::Balance>`
         /// - charged fees `Vec<T::Balance>`
         /// - actual token supply `T::Balance`
+        /// - quantity of LP tokens to burn in the withdrawal `T::Balance`
         ///
-        /// \[who, pool_id, token_amounts, fees, token_supply\]
+        /// \[who, pool_id, token_amounts, fees, token_supply, burn_amount\]
         RemoveLiquidity(
             T::AccountId,
             PoolId,
@@ -1204,7 +1206,10 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 );
 
                 ensure!(
-                    T::Assets::balance(pool.assets[j], &T::PalletId::get().into_account_truncating()) >= dy,
+                    T::Assets::balance(
+                        pool.assets[j],
+                        &T::PalletId::get().into_account_truncating()
+                    ) >= dy,
                     Error::<T>::InsufficientFunds
                 );
 
@@ -1301,8 +1306,10 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 // Ensure that for all tokens we have sufficient amount
                 for i in 0..n_coins {
                     ensure!(
-                        T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account_truncating())
-                            >= amounts[i],
+                        T::Assets::balance(
+                            pool.assets[i],
+                            &T::PalletId::get().into_account_truncating()
+                        ) >= amounts[i],
                         Error::<T>::InsufficientFunds
                     );
                 }
@@ -1463,8 +1470,10 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 // Ensure that for all tokens we have sufficient amount
                 for i in 0..n_coins {
                     ensure!(
-                        T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account_truncating())
-                            >= amounts[i],
+                        T::Assets::balance(
+                            pool.assets[i],
+                            &T::PalletId::get().into_account_truncating()
+                        ) >= amounts[i],
                         Error::<T>::InsufficientFunds
                     );
                 }
@@ -1572,7 +1581,10 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 let b_dy = Self::convert_number_to_balance(dy);
 
                 ensure!(
-                    T::Assets::balance(pool.assets[i], &T::PalletId::get().into_account_truncating()) >= b_dy,
+                    T::Assets::balance(
+                        pool.assets[i],
+                        &T::PalletId::get().into_account_truncating()
+                    ) >= b_dy,
                     Error::<T>::InsufficientFunds
                 );
 
@@ -1662,9 +1674,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
 pub mod traits {
     use crate::{PoolId, PoolInfo, PoolTokenIndex};
     use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo};
+    use impl_trait_for_tuples::impl_for_tuples;
     use sp_runtime::Permill;
     use sp_std::vec::Vec;
-    use impl_trait_for_tuples::impl_for_tuples;
 
     /// Pallet equilibrium_curve_amm should interact with custom Assets.
     /// In order to do this it relies on `Assets` trait implementation.
@@ -1806,17 +1818,14 @@ pub mod traits {
         ) -> DispatchResultWithPostInfo;
     }
 
-    /// Notification about new pool created. 
+    /// Notification about new pool created.
     pub trait OnPoolCreated {
         fn on_pool_created(pool_id: PoolId);
     }
 
     #[impl_for_tuples(5)]
-    impl OnPoolCreated for Tuple
-    {
-        fn on_pool_created(
-            pool_id: PoolId
-        ) {
+    impl OnPoolCreated for Tuple {
+        fn on_pool_created(pool_id: PoolId) {
             for_tuples!( #( Tuple::on_pool_created(pool_id); )* );
         }
     }
