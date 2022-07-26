@@ -34,10 +34,7 @@ pub trait EquilibriumCurveAmmApi<Balance> {
         i: PoolTokenIndex,
     ) -> Result<Option<Balance>>;
     #[method(name = "equilibriumCurveAmm_getVirtualPrice")]
-    fn get_virtual_price(
-        &self, 
-        pool_id: PoolId
-    ) -> Result<Option<Balance>>;
+    fn get_virtual_price(&self, pool_id: PoolId) -> Result<Option<Balance>>;
 }
 
 pub struct EquilibriumCurveAmm<C, P> {
@@ -89,11 +86,8 @@ where
             .flatten();
         Ok(dy)
     }
-    
-    fn get_virtual_price(
-        &self,
-        pool_id: PoolId
-    ) -> Result<Option<Balance>> {
+
+    fn get_virtual_price(&self, pool_id: PoolId) -> Result<Option<Balance>> {
         let at = BlockId::hash(self.client.info().best_hash);
         let api = self.client.runtime_api();
         let virtual_price = api.get_virtual_price(&at, pool_id).ok().flatten();
