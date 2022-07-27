@@ -1,5 +1,6 @@
 use crate as curve_amm;
 use crate::traits::{CheckedConvert, CurveAmm as CurveAmmTrait};
+use frame_support::PalletId;
 use frame_support::{
     dispatch::{DispatchError, DispatchResult},
     parameter_types,
@@ -12,7 +13,6 @@ use sp_runtime::Permill;
 use sp_runtime::{
     testing::Header,
     traits::{AccountIdConversion, BlakeTwo256, IdentityLookup},
-    ModuleId,
 };
 use sp_runtime::{FixedI64, FixedPointNumber, FixedU128};
 use sp_std::convert::{TryFrom, TryInto};
@@ -27,9 +27,9 @@ frame_support::construct_runtime!(
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
-        System: frame_system::{Module, Call, Config, Storage, Event<T>},
-        Balances: pallet_balances::{Module, Call, Storage, Event<T>},
-        CurveAmm: curve_amm::{Module, Call, Storage, Event<T>},
+        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
+        Balances: pallet_balances::{Pallet, Call, Storage, Event<T>},
+        CurveAmm: curve_amm::{Pallet, Call, Storage, Event<T>},
     }
 );
 
@@ -41,7 +41,7 @@ parameter_types! {
 pub type AccountId = u64;
 
 impl system::Config for Test {
-    type BaseCallFilter = ();
+    type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
     type BlockLength = ();
     type DbWeight = ();
@@ -63,6 +63,8 @@ impl system::Config for Test {
     type OnKilledAccount = ();
     type SystemWeightInfo = ();
     type SS58Prefix = SS58Prefix;
+    type OnSetCode = ();
+    type MaxConsumers = frame_support::traits::ConstU32<16>;
 }
 
 parameter_types! {
@@ -77,11 +79,13 @@ impl pallet_balances::Config for Test {
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = ();
+    type MaxReserves = ();
+    type ReserveIdentifier = ();
 }
 
 parameter_types! {
     pub const CreationFee: Balance = 999;
-    pub const CurveAmmModuleId: ModuleId = ModuleId(*b"eq/crvam");
+    pub const CurveAmmModuleId: PalletId = PalletId(*b"eq/crvam");
     pub Precision: FixedU128 = FixedU128::saturating_from_rational(1, 1_000_000_000);
 }
 
@@ -257,7 +261,7 @@ impl curve_amm::traits::Assets<AssetId, Balance, AccountId> for TestAssets {
         for (asset, amount) in assets.into_iter().zip(amounts) {
             Self::transfer(
                 asset,
-                &CurveAmmModuleId::get().into_account(),
+                &CurveAmmModuleId::get().into_account_truncating(),
                 &CURVE_ADMIN_FEE_ACC_ID,
                 amount,
             )?;
@@ -288,7 +292,8 @@ impl super::traits::OnPoolCreated for OnPoolCreated {
     fn on_pool_created(pool_id: PoolId) {
         ON_POOL_CREATED_CALLED.with(|pool_created_called| {
             let mut mut_pool_created_called = pool_created_called.borrow_mut();
-            mut_pool_created_called.entry(pool_id)
+            mut_pool_created_called
+                .entry(pool_id)
                 .and_modify(|v| *v = *v + 1u32)
                 .or_insert(1);
         });
@@ -303,7 +308,7 @@ impl curve_amm::Config for Test {
     type CreationFee = CreationFee;
     type Assets = TestAssets;
     type OnUnbalanced = EmptyUnbalanceHandler;
-    type ModuleId = CurveAmmModuleId;
+    type PalletId = CurveAmmModuleId;
     type AssetChecker = ();
     type OnPoolCreated = OnPoolCreated;
 

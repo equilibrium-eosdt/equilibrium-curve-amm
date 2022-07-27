@@ -3,7 +3,7 @@ use crate::{mock::*, Error, PoolInfo};
 use core::convert::From;
 use frame_support::assert_err_ignore_postinfo;
 use frame_support::{assert_ok, traits::Currency};
-use sp_runtime::traits::Saturating;
+use sp_runtime::traits::{Saturating, Zero};
 use sp_runtime::Permill;
 use sp_runtime::{FixedPointNumber, FixedU128};
 use sp_std::cmp::Ordering;
@@ -186,7 +186,9 @@ fn withdraw_admin_fee_several_polls_with_common_asset() {
             asset_d,
             asset_e,
             asset_f,
-        ].iter() {
+        ]
+        .iter()
+        {
             assert_ok!(TestAssets::mint(asset, &owner, base_amount));
         }
 
@@ -410,7 +412,7 @@ mod curve {
         let alice = ALICE_ID;
         let bob = BOB_ID;
         let charlie = CHARLIE_ID;
-        let swap: u64 = CurveAmmModuleId::get().into_account();
+        let swap: u64 = CurveAmmModuleId::get().into_account_truncating();
 
         let pool = TEST_POOL_ID;
 
@@ -492,7 +494,7 @@ mod curve {
 
     fn init_mint_alice() -> MintAliceContext {
         let alice = ALICE_ID;
-        let swap: u64 = CurveAmmModuleId::get().into_account();
+        let swap: u64 = CurveAmmModuleId::get().into_account_truncating();
 
         let pool = TEST_POOL_ID;
 
@@ -559,7 +561,7 @@ mod curve {
     fn init_add_initial_liquidity(fee: Permill, admin_fee: Permill) -> AddInitialLiquidityContext {
         let alice = ALICE_ID;
         let bob = BOB_ID;
-        let swap: u64 = CurveAmmModuleId::get().into_account();
+        let swap: u64 = CurveAmmModuleId::get().into_account_truncating();
 
         let pool = TEST_POOL_ID;
 
@@ -638,6 +640,7 @@ mod curve {
         use crate::Error;
         use frame_support::assert_err_ignore_postinfo;
         use frame_support::assert_ok;
+        use sp_runtime::traits::One;
         use sp_runtime::traits::Saturating;
         use sp_runtime::FixedI64;
         use sp_runtime::FixedPointNumber;
@@ -873,7 +876,7 @@ mod curve {
                     0
                 ));
 
-                if let Event::curve_amm(crate::pallet::Event::AddLiquidity(
+                if let Event::CurveAmm(crate::pallet::Event::AddLiquidity(
                     provider,
                     _,
                     token_amounts,
@@ -899,6 +902,7 @@ mod curve {
         use crate::Error;
         use frame_support::assert_err_ignore_postinfo;
         use frame_support::assert_ok;
+        use sp_runtime::traits::One;
         use sp_runtime::FixedI64;
         use sp_runtime::FixedPointNumber;
 
@@ -1178,12 +1182,13 @@ mod curve {
                     vec![0; n_coins],
                 ));
 
-                if let Event::curve_amm(crate::pallet::Event::RemoveLiquidity(
+                if let Event::CurveAmm(crate::pallet::Event::RemoveLiquidity(
                     provider,
                     _,
                     token_amounts,
                     _,
                     token_supply,
+                    _,
                 )) = last_event()
                 {
                     assert_eq!(provider, bob);
@@ -1493,7 +1498,7 @@ mod curve {
                     max_burn,
                 ));
 
-                if let Event::curve_amm(crate::pallet::Event::RemoveLiquidityImbalance(
+                if let Event::CurveAmm(crate::pallet::Event::RemoveLiquidityImbalance(
                     provider,
                     _,
                     token_amounts,
@@ -1765,7 +1770,7 @@ mod curve {
                                 0
                             ));
 
-                            if let Event::curve_amm(crate::pallet::Event::RemoveLiquidityOne(
+                            if let Event::CurveAmm(crate::pallet::Event::RemoveLiquidityOne(
                                 provider,
                                 _,
                                 token_amount,
@@ -1798,8 +1803,10 @@ mod curve {
         use crate::traits::Assets;
         use crate::PoolTokenIndex;
         use frame_support::assert_ok;
+        use sp_runtime::traits::One;
         use sp_runtime::FixedI64;
         use sp_runtime::FixedPointNumber;
+        use sp_runtime::PerThing;
         use sp_std::cmp::max;
         use sp_std::convert::TryFrom;
 
@@ -1822,8 +1829,8 @@ mod curve {
                             const FEE_Q: u64 = 10_000;
 
                             let (sending, receiving, fee, admin_fee): (usize, usize, u64, u64) = $value;
-                            let fee = Permill::from_rational_approximation(fee, FEE_Q);
-                            let admin_fee = Permill::from_rational_approximation(admin_fee, FEE_Q);
+                            let fee = PerThing::from_rational(fee, FEE_Q);
+                            let admin_fee = PerThing::from_rational(admin_fee, FEE_Q);
 
                             let AddInitialLiquidityContext {
                                 bob,
