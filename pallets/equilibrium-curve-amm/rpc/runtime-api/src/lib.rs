@@ -13,5 +13,6 @@ sp_api::decl_runtime_apis! {
 	{
 		fn get_dy(pool_id: PoolId, i: PoolTokenIndex, j: PoolTokenIndex, dx: Balance) -> Option<Balance>;
 		fn get_withdraw_one_coin(pool_id: PoolId, burn_amount: Balance, i: PoolTokenIndex) -> Option<Balance>;
+		fn get_virtual_price(pool_id: PoolId) -> Option<Balance>;
 	}
 }

@@ -29,6 +29,12 @@ pub trait EquilibriumCurveAmmApi<Balance> {
         i: PoolTokenIndex,
     ) -> Result<Option<Balance>>;
 
+    #[rpc(name = "equilibriumCurveAmm_getVirtualPrice")]
+    fn get_virtual_price(
+        &self,
+        pool_id: PoolId,
+    ) -> Result<Option<Balance>>;
+
 }
 
 pub struct EquilibriumCurveAmm<C, P> {
@@ -72,5 +78,15 @@ impl<C, Block, Balance> EquilibriumCurveAmmApi<Balance> for EquilibriumCurveAmm<
         let api = self.client.runtime_api();
         let dy = api.get_withdraw_one_coin(&at, pool_id, burn_amount, i).ok().flatten();
         Ok(dy)
+    }
+
+    fn get_virtual_price(
+        &self,
+        pool_id: PoolId,
+    ) -> Result<Option<Balance>> {
+        let at = BlockId::hash(self.client.info().best_hash);
+        let api = self.client.runtime_api();
+        let virtual_price = api.get_virtual_price(&at, pool_id).ok().flatten();
+        Ok(virtual_price)
     }
 }
