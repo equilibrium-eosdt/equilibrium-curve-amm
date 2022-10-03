@@ -13,7 +13,7 @@ const SEED: u32 = 0;
 const CURVE_AMM_MODULE_ID: PalletId = PalletId(*b"eq/crvam");
 
 pub trait Config: crate::Config {}
-pub struct Module<T: Config>(crate::Pallet<T>);
+pub struct Pallet<T: Config>(crate::Pallet<T>);
 
 fn get_pool_params<T: Config>(
     assets_count: u32,
