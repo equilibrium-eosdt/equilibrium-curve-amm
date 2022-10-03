@@ -7,10 +7,10 @@ use frame_system::{pallet_prelude::OriginFor, Module as System, RawOrigin};
 use sp_runtime::Permill;
 
 use crate::Pallet as Curve;
-use frame_benchmarking::frame_support::sp_runtime::ModuleId;
+use frame_support::PalletId;
 
 const SEED: u32 = 0;
-const CURVE_AMM_MODULE_ID: ModuleId = ModuleId(*b"eq/crvam");
+const CURVE_AMM_MODULE_ID: PalletId = PalletId(*b"eq/crvam");
 
 pub trait Config: crate::Config {}
 pub struct Module<T: Config>(crate::Pallet<T>);
@@ -38,7 +38,7 @@ fn get_pool_params<T: Config>(
 
 fn init_module_account<T: Config>() {
     <T::Currency as Currency<T::AccountId>>::make_free_balance_be(
-        &CURVE_AMM_MODULE_ID.into_account(),
+        &CURVE_AMM_MODULE_ID.into_account_truncating(),
         convert_to_balance::<T>(1_000_000usize),
     );
 }
