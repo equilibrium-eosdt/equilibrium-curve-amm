@@ -36,3 +36,7 @@ tags
 ### JetBrains related ###
 
 /.idea
+
+### MacOS
+
+.DS_Store

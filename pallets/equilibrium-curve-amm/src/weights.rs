@@ -20,27 +20,27 @@ pub trait WeightInfo {
 
 impl crate::WeightInfo for () {
     fn create_pool(_b: u32) -> Weight {
-        0 as Weight
+        Weight::zero()
     }
     fn add_liquidity_without_fee(_b: u32) -> Weight {
-        0 as Weight
+        Weight::zero()
     }
     fn add_liquidity_with_fee(_b: u32) -> Weight {
-        0 as Weight
+        Weight::zero()
     }
     fn exchange() -> Weight {
-        0 as Weight
+        Weight::zero()
     }
     fn remove_liquidity(_b: u32) -> Weight {
-        0 as Weight
+        Weight::zero()
     }
     fn remove_liquidity_imbalance(_b: u32) -> Weight {
-        0 as Weight
+        Weight::zero()
     }
     fn remove_liquidity_one_coin() -> Weight {
-        0 as Weight
+        Weight::zero()
     }
     fn withdraw_admin_fees() -> Weight {
-        0 as Weight
+        Weight::zero()
     }
 }
