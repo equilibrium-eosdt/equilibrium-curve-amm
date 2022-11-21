@@ -12,9 +12,9 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-sp-api = { default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.29" }
+sp-api = { default-features = false, git = 'https://github.com/paritytech/substrate', branch = "master" }
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["derive"] }
-sp-runtime = { default-features = false, git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.29" }
+sp-runtime = { default-features = false, git = 'https://github.com/paritytech/substrate', branch = "master" }
 equilibrium-curve-amm = { version = "0.2.0", default-features = false, path = "../../../equilibrium-curve-amm" }
 
 [features]

@@ -14,9 +14,9 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.0.0" }
 jsonrpsee = { version = "0.15.1", features = ["server", "macros"] }
-sp-core = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.29" }
-sp-rpc = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.29" }
-sp-runtime = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.29" }
-sp-api = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.29" }
-sp-blockchain = { git = 'https://github.com/paritytech/substrate', branch = "polkadot-v0.9.29" }
+sp-core = { git = 'https://github.com/paritytech/substrate', branch = "master" }
+sp-rpc = { git = 'https://github.com/paritytech/substrate', branch = "master" }
+sp-runtime = { git = 'https://github.com/paritytech/substrate', branch = "master" }
+sp-api = { git = 'https://github.com/paritytech/substrate', branch = "master" }
+sp-blockchain = { git = 'https://github.com/paritytech/substrate', branch = "master" }
 equilibrium-curve-amm-rpc-runtime-api = { version = "0.1.7", path = "./runtime-api" }

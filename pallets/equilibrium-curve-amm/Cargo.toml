@@ -14,23 +14,23 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["derive"] }
 impl-trait-for-tuples = "0.1.3"
-scale-info = { version = "2.0.1", default-features = false, features = ["derive"] }
+scale-info = { version = "2.2.0", default-features = false, features = ["derive"] }
 log = { version = "0.4.17", default-features = false }
 
 [dependencies.frame-support]
 default-features = false
 git = 'https://github.com/paritytech/substrate'
-branch = "polkadot-v0.9.29"
+branch = "master"
 
 [dependencies.frame-system]
 default-features = false
 git = 'https://github.com/paritytech/substrate'
-branch = "polkadot-v0.9.29"
+branch = "master"
 
 [dependencies.frame-benchmarking]
 default-features = false
 git = 'https://github.com/paritytech/substrate'
-branch = "polkadot-v0.9.29"
+branch = "master"
 optional = true
 package = "frame-benchmarking"
 
@@ -40,27 +40,27 @@ serde = { version = "1.0.101" }
 [dev-dependencies.sp-core]
 default-features = false
 git = 'https://github.com/paritytech/substrate'
-branch = "polkadot-v0.9.29"
+branch = "master"
 
 [dev-dependencies.sp-io]
 default-features = false
 git = 'https://github.com/paritytech/substrate'
-branch = "polkadot-v0.9.29"
+branch = "master"
 
 [dependencies.sp-std]
 default-features = false
 git = 'https://github.com/paritytech/substrate'
-branch = "polkadot-v0.9.29"
+branch = "master"
 
 [dependencies.sp-runtime]
 default-features = false
 git = 'https://github.com/paritytech/substrate'
-branch = "polkadot-v0.9.29"
+branch = "master"
 
 [dev-dependencies.pallet-balances]
 default-features = false
 git = 'https://github.com/paritytech/substrate'
-branch = "polkadot-v0.9.29"
+branch = "master"
 
 [features]
 default = ["std"]

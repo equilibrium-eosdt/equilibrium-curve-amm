@@ -4,9 +4,10 @@ use frame_support::weights::Weight;
 pub trait WeightInfo {
     fn create_pool(b: u32) -> Weight;
     fn add_liquidity(b: u32) -> Weight {
-        sp_std::cmp::max(
+        sp_std::cmp::max_by(
             Self::add_liquidity_without_fee(b),
             Self::add_liquidity_with_fee(b),
+            |x: _, y: _| x.ref_time().cmp(&y.ref_time())
         )
     }
     fn add_liquidity_without_fee(b: u32) -> Weight;
