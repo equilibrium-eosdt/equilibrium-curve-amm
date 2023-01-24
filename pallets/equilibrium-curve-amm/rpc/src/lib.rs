@@ -12,8 +12,8 @@ use sp_runtime::{
     generic::BlockId,
     traits::{Block as BlockT, MaybeDisplay},
 };
-use std::convert::TryInto;
 use std::sync::Arc;
+use std::{convert::TryInto, fmt::Debug};
 
 #[rpc(client, server)]
 pub trait EquilibriumCurveAmmApi<Balance, Hash> {
@@ -60,7 +60,7 @@ where
     C: 'static + ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     C: CallApiAt<Block>,
     C::Api: EquilibriumCurveAmmRuntimeApi<Block, Balance>,
-    Balance: Codec + MaybeDisplay + Copy + TryInto<NumberOrHex> + PartialEq,
+    Balance: Codec + MaybeDisplay + Copy + TryInto<NumberOrHex> + PartialEq + Debug,
 {
     fn get_dy(
         &self,
@@ -97,7 +97,7 @@ where
     ) -> RpcResult<Option<Balance>> {
         if let Some(block) = mb_block {
             let at = BlockId::hash(block);
-            let mb_encoded_virtual_price: NativeOrEncoded<Option<Balance>> = self
+            let native_or_encoded: NativeOrEncoded<Option<Balance>> = self
                 .client
                 .call_api_at(CallApiAtParams::<_, fn() -> _, _> {
                     at: &&at,
@@ -111,12 +111,12 @@ where
                 })
                 .map_err(|e| RpcError::Custom(e.to_string()))?;
 
-            let virtual_price = match mb_encoded_virtual_price {
+            let virtual_price = match native_or_encoded {
                 NativeOrEncoded::Native(native) => native,
                 NativeOrEncoded::Encoded(encoded) => {
-                    let decoded: Balance = Decode::decode(&mut &encoded[..])
+                    let decoded: Option<Balance> = Decode::decode(&mut &encoded[..])
                         .map_err(|e| RpcError::Custom(e.to_string()))?;
-                    Some(decoded)
+                    decoded
                 }
             };
 
