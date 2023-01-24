@@ -1499,7 +1499,7 @@ dependencies = [
 
 [[package]]
 name = "equilibrium-curve-amm-rpc"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "equilibrium-curve-amm-rpc-runtime-api",
  "jsonrpsee",
