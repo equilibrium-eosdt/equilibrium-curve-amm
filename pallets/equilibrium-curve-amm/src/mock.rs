@@ -54,7 +54,7 @@ impl system::Config for Test {
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = Event;
+    type RuntimeEventEvent = Event;
     type BlockHashCount = BlockHashCount;
     type Version = ();
     type PalletInfo = PalletInfo;
@@ -301,7 +301,7 @@ impl super::traits::OnPoolCreated for OnPoolCreated {
 }
 
 impl curve_amm::Config for Test {
-    type Event = Event;
+    type RuntimeEventEvent = Event;
     type AssetId = i64;
     type Balance = Balance;
     type Currency = Balances;
