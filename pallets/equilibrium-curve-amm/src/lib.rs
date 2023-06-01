@@ -126,7 +126,6 @@ pub mod pallet {
     }
 
     #[pallet::pallet]
-    #[pallet::generate_store(pub(super) trait Store)]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
@@ -304,6 +303,7 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Creates a pool, taking a creation fee from the caller
+        #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::create_pool(assets.len() as u32))]
         pub fn create_pool(
             origin: OriginFor<T>,
@@ -319,6 +319,7 @@ pub mod pallet {
         /// Deposit coins into the pool
         /// `amounts` - list of amounts of coins to deposit,
         /// `min_mint_amount` - minimum amount of LP tokens to mint from the deposit.
+        #[pallet::call_index(1)]
         #[pallet::weight(T::WeightInfo::add_liquidity(amounts.len() as u32))]
         pub fn add_liquidity(
             origin: OriginFor<T>,
@@ -335,6 +336,7 @@ pub mod pallet {
         /// `j` - index value of the coin to receive,
         /// `dx` - amount of `i` being exchanged,
         /// `min_dy` - minimum amount of `j` to receive.
+        #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::exchange())]
         pub fn exchange(
             origin: OriginFor<T>,
@@ -352,6 +354,7 @@ pub mod pallet {
         /// Withdrawal amount are based on current deposit ratios.
         /// `amount` - quantity of LP tokens to burn in the withdrawal,
         /// `min_amounts` - minimum amounts of underlying coins to receive.
+        #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::remove_liquidity(min_amounts.len() as u32))]
         pub fn remove_liquidity(
             origin: OriginFor<T>,
@@ -366,6 +369,7 @@ pub mod pallet {
         /// Withdraw coins from the pool in an imbalanced amount.
         /// `amounts` - list of amounts of underlying coins to withdraw,
         /// `max_burn_amount` - maximum amount of LP token to burn in the withdrawal.
+        #[pallet::call_index(4)]
         #[pallet::weight(T::WeightInfo::remove_liquidity_imbalance(amounts.len() as u32))]
         pub fn remove_liquidity_imbalance(
             origin: OriginFor<T>,
@@ -381,6 +385,7 @@ pub mod pallet {
         /// `token_amount` - amount of LP tokens to burn in the withdrawal,
         /// `i` - index value of the coin to withdraw,
         /// `min_amount` - minimum amount of coin to receive.
+        #[pallet::call_index(5)]
         #[pallet::weight(T::WeightInfo::remove_liquidity_one_coin())]
         pub fn remove_liquidity_one_coin(
             origin: OriginFor<T>,
@@ -400,6 +405,7 @@ pub mod pallet {
         }
 
         /// Withdraw admin fee.
+        #[pallet::call_index(6)]
         #[pallet::weight(T::WeightInfo::withdraw_admin_fees())]
         pub fn withdraw_admin_fees(
             origin: OriginFor<T>,
