@@ -5,11 +5,10 @@ use jsonrpsee::{
     core::{async_trait, Error as RpcError, RpcResult},
     proc_macros::rpc,
 };
-use sp_api::{CallApiAt, CallApiAtParams, ExecutionContext, NativeOrEncoded, ProvideRuntimeApi};
+use sp_api::{CallApiAt, CallApiAtParams, ExecutionContext, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_rpc::number::NumberOrHex;
 use sp_runtime::{
-    generic::BlockId,
     traits::{Block as BlockT, MaybeDisplay},
 };
 use std::sync::Arc;
@@ -69,9 +68,9 @@ where
         j: PoolTokenIndex,
         dx: Balance,
     ) -> RpcResult<Option<Balance>> {
-        let at = BlockId::hash(self.client.info().best_hash);
+        let at = self.client.info().best_hash;
         let api = self.client.runtime_api();
-        let dy = api.get_dy(&at, pool_id, i, j, dx).ok().flatten();
+        let dy = api.get_dy(at, pool_id, i, j, dx).ok().flatten();
         Ok(dy)
     }
 
@@ -81,10 +80,10 @@ where
         burn_amount: Balance,
         i: PoolTokenIndex,
     ) -> RpcResult<Option<Balance>> {
-        let at = BlockId::hash(self.client.info().best_hash);
+        let at = self.client.info().best_hash;
         let api = self.client.runtime_api();
         let dy = api
-            .get_withdraw_one_coin(&at, pool_id, burn_amount, i)
+            .get_withdraw_one_coin(at, pool_id, burn_amount, i)
             .ok()
             .flatten();
         Ok(dy)
@@ -95,14 +94,12 @@ where
         pool_id: PoolId,
         mb_block: Option<Block::Hash>,
     ) -> RpcResult<Option<Balance>> {
-        if let Some(block) = mb_block {
-            let at = BlockId::hash(block);
-            let native_or_encoded: NativeOrEncoded<Option<Balance>> = self
+        if let Some(at) = mb_block {
+            let encoded = self
                 .client
-                .call_api_at(CallApiAtParams::<_, fn() -> _, _> {
-                    at: &&at,
+                .call_api_at(CallApiAtParams::<_, _> {
+                    at,
                     function: "EquilibriumCurveAmmApi_get_virtual_price",
-                    native_call: None,
                     arguments: Encode::encode(&pool_id),
                     overlayed_changes: &Default::default(),
                     storage_transaction_cache: &Default::default(),
@@ -111,20 +108,14 @@ where
                 })
                 .map_err(|e| RpcError::Custom(e.to_string()))?;
 
-            let virtual_price = match native_or_encoded {
-                NativeOrEncoded::Native(native) => native,
-                NativeOrEncoded::Encoded(encoded) => {
-                    let decoded: Option<Balance> = Decode::decode(&mut &encoded[..])
-                        .map_err(|e| RpcError::Custom(e.to_string()))?;
-                    decoded
-                }
-            };
+            let virtual_price =
+                Decode::decode(&mut &encoded[..]).map_err(|e| RpcError::Custom(e.to_string()))?;
 
             Ok(virtual_price)
         } else {
-            let at = BlockId::hash(self.client.info().best_hash);
+            let at = self.client.info().best_hash;
             let api = self.client.runtime_api();
-            let virtual_price = api.get_virtual_price(&at, pool_id).ok().flatten();
+            let virtual_price = api.get_virtual_price(at, pool_id).ok().flatten();
             Ok(virtual_price)
         }
     }
