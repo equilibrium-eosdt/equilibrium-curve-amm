@@ -105,6 +105,7 @@ fn create_pool_pool_saved_to_storage() {
                 admin_fee: Permill::one(),
                 balances: vec![0u64, 0u64,],
                 total_balances: vec![0u64, 0u64],
+                is_enabled: true,
             })
         );
     });
@@ -374,6 +375,28 @@ fn get_y_j_greater_than_n() {
     let result = CurveAmm::get_y(i, j, x, &xp, ann);
 
     assert_eq!(result, None);
+}
+
+#[test]
+fn disabled_pool() {
+    new_test_ext().execute_with(|| {
+        let _ = Balances::deposit_creating(&1, 100000000);
+        assert_ok!(CurveAmm::create_pool(
+            Origin::signed(1),
+            vec![0, 1],
+            FixedU128::from(1u128),
+            Permill::one(),
+            Permill::one(),
+        ));
+
+        let on_pool_created_called = get_on_pool_created_called();
+        assert_eq!(on_pool_created_called.len(), 1);
+        assert_eq!(on_pool_created_called[&0], 1);
+
+        assert_ok!(CurveAmm::set_enable_state(Origin::signed(1), 0, false,));
+
+        assert_eq!(CurveAmm::pools(0).unwrap().is_enabled, false);
+    });
 }
 
 mod curve {
@@ -894,6 +917,30 @@ mod curve {
                 }
             });
         }
+
+        #[test]
+        fn test_add_liquidity_disabled() {
+            new_test_ext().execute_with(|| {
+                let AddInitialLiquidityAndMintBobContext {
+                    bob,
+                    swap,
+                    pool,
+                    pool_token,
+                    coins,
+                    n_coins,
+                    base_amount,
+                    initial_amounts,
+                    ..
+                } = init_add_initial_liquidity_and_mint_bob(Permill::zero(), Permill::zero());
+
+                assert_ok!(CurveAmm::set_enable_state(Origin::signed(bob), pool, false,));
+
+                assert_err_ignore_postinfo!(
+                    CurveAmm::add_liquidity(Origin::signed(bob), pool, initial_amounts.clone(), 0),
+                    Error::<Test>::Disabled
+                );
+            });
+        }
     }
 
     mod test_add_liquidity_initial {
@@ -904,7 +951,6 @@ mod curve {
         use frame_support::assert_ok;
         use sp_runtime::traits::One;
         use sp_runtime::FixedI64;
-        use sp_runtime::FixedPointNumber;
 
         macro_rules! initial_tests {
             ($($name:ident: $value:expr,)*) => {
@@ -1200,6 +1246,53 @@ mod curve {
                 } else {
                     panic!("Unexpected event");
                 }
+            });
+        }
+
+        #[test]
+        fn test_remove_liquidity_disabled() {
+            new_test_ext().execute_with(|| {
+                let AddInitialLiquidityContext {
+                    alice,
+                    swap,
+                    pool,
+                    pool_token,
+                    coins,
+                    n_coins,
+                    base_amount,
+                    initial_amounts,
+                    ..
+                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
+
+                assert_ok!(CurveAmm::set_enable_state(
+                    Origin::signed(alice),
+                    pool,
+                    false,
+                ));
+
+                let withdraw_amount = initial_amounts.iter().sum::<Balance>() / 2;
+
+                assert_ok!(CurveAmm::remove_liquidity(
+                    Origin::signed(alice),
+                    pool,
+                    withdraw_amount,
+                    vec![0; n_coins]
+                ));
+
+                for (&coin, &amount) in coins.iter().zip(initial_amounts.iter()) {
+                    let pool_balance = TestAssets::balance(coin, &swap);
+                    let alice_balance = TestAssets::balance(coin, &alice);
+                    assert_eq!(alice_balance + pool_balance, amount);
+                }
+
+                assert_eq!(
+                    TestAssets::balance(pool_token, &alice),
+                    (n_coins as Balance) * BALANCE_ONE * base_amount - withdraw_amount
+                );
+                assert_eq!(
+                    TestAssets::total_issuance(pool_token),
+                    (n_coins as Balance) * BALANCE_ONE * base_amount - withdraw_amount
+                );
             });
         }
     }
@@ -1519,6 +1612,51 @@ mod curve {
                 }
             });
         }
+
+        #[test]
+        fn test_remove_liquidity_imbalance_disabled() {
+            new_test_ext().execute_with(|| {
+                let AddInitialLiquidityContext {
+                    alice,
+                    bob,
+                    pool,
+                    pool_token,
+                    coins,
+                    n_coins,
+                    base_amount,
+                    initial_amounts,
+                    ..
+                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
+
+                let _ = TestAssets::transfer(
+                    pool_token,
+                    &alice,
+                    &bob,
+                    TestAssets::balance(pool_token, &alice),
+                );
+
+                System::set_block_number(2);
+
+                let amounts = initial_amounts.iter().map(|i| i / 5).collect::<Vec<_>>();
+                let max_burn = (n_coins as Balance) * BALANCE_ONE * base_amount;
+
+                assert_ok!(CurveAmm::set_enable_state(
+                    Origin::signed(alice),
+                    pool,
+                    false,
+                ));
+
+                assert_err_ignore_postinfo!(
+                    CurveAmm::remove_liquidity_imbalance(
+                        Origin::signed(bob),
+                        pool,
+                        amounts,
+                        max_burn,
+                    ),
+                    Error::<Test>::Disabled,
+                );
+            });
+        }
     }
 
     mod test_remove_liquidity_one_coin {
@@ -1796,6 +1934,36 @@ mod curve {
             test_event_0: 0,
             test_event_1: 1,
         }
+
+        #[test]
+        fn test_remove_liquidity_one_coin_disabled() {
+            new_test_ext().execute_with(|| {
+                let AddInitialLiquidityContext {
+                    alice, pool, coins, ..
+                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
+
+                let idx: usize = 0;
+
+                let rate_mod = (100_001, 100_000);
+
+                assert_ok!(CurveAmm::set_enable_state(
+                    Origin::signed(alice),
+                    pool,
+                    false,
+                ));
+
+                assert_err_ignore_postinfo!(
+                    CurveAmm::remove_liquidity_one_coin(
+                        Origin::signed(alice),
+                        pool,
+                        BALANCE_ONE,
+                        idx as PoolTokenIndex,
+                        0,
+                    ),
+                    Error::<Test>::Disabled,
+                );
+            });
+        }
     }
 
     mod test_exchange {
@@ -1968,6 +2136,7 @@ mod curve {
         use crate::Error;
         use crate::PoolTokenIndex;
         use frame_support::assert_err_ignore_postinfo;
+        use sp_runtime::PerThing;
 
         macro_rules! insufficient_balance_tests {
             ($($name:ident: $value:expr,)*) => {
@@ -2157,6 +2326,43 @@ mod curve {
         j_above_n_coins_tests! {
             test_j_above_n_coins_0: 9,
             test_j_above_n_coins_1: Balance::max_value(),
+        }
+
+        #[test]
+        fn test_exchange_disabled() {
+            new_test_ext().execute_with(|| {
+                const FEE_Q: u64 = 10_000;
+
+                let (sending, receiving, fee, admin_fee): (usize, usize, u64, u64) =
+                    (0, 1, 0, 1337);
+                let fee = PerThing::from_rational(fee, FEE_Q);
+                let admin_fee = PerThing::from_rational(admin_fee, FEE_Q);
+
+                let AddInitialLiquidityContext {
+                    bob,
+                    swap,
+                    pool,
+                    coins,
+                    ..
+                } = init_add_initial_liquidity(fee, admin_fee);
+
+                let amount = BALANCE_ONE;
+                let _ = TestAssets::mint(coins[sending], &bob, amount);
+
+                assert_ok!(CurveAmm::set_enable_state(Origin::signed(bob), pool, false,));
+
+                assert_err_ignore_postinfo!(
+                    CurveAmm::exchange(
+                        Origin::signed(bob),
+                        pool,
+                        sending as PoolTokenIndex,
+                        receiving as PoolTokenIndex,
+                        amount,
+                        0,
+                    ),
+                    Error::<Test>::Disabled,
+                );
+            });
         }
     }
 
