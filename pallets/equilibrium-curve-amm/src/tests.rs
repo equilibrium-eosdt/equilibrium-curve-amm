@@ -3,9 +3,10 @@ use crate::{mock::*, Error, PoolInfo};
 use core::convert::From;
 use frame_support::assert_err_ignore_postinfo;
 use frame_support::{assert_ok, traits::Currency};
-use sp_runtime::traits::{Saturating, Zero};
-use sp_runtime::Permill;
-use sp_runtime::{FixedPointNumber, FixedU128};
+use sp_runtime::{
+    traits::{Saturating, Zero},
+    DispatchError, FixedPointNumber, FixedU128, Permill,
+};
 use sp_std::cmp::Ordering;
 
 fn last_event() -> Event {
@@ -393,7 +394,11 @@ fn disabled_pool() {
         assert_eq!(on_pool_created_called.len(), 1);
         assert_eq!(on_pool_created_called[&0], 1);
 
-        assert_ok!(CurveAmm::set_enable_state(Origin::signed(1), 0, false,));
+        assert_err_ignore_postinfo!(
+            CurveAmm::set_enable_state(Origin::signed(1), 0, false),
+            DispatchError::BadOrigin
+        );
+        assert_ok!(CurveAmm::set_enable_state(Origin::root(), 0, false));
 
         assert_eq!(CurveAmm::pools(0).unwrap().is_enabled, false);
     });
@@ -933,7 +938,7 @@ mod curve {
                     ..
                 } = init_add_initial_liquidity_and_mint_bob(Permill::zero(), Permill::zero());
 
-                assert_ok!(CurveAmm::set_enable_state(Origin::signed(bob), pool, false,));
+                assert_ok!(CurveAmm::set_enable_state(Origin::root(), pool, false,));
 
                 assert_err_ignore_postinfo!(
                     CurveAmm::add_liquidity(Origin::signed(bob), pool, initial_amounts.clone(), 0),
@@ -1264,11 +1269,7 @@ mod curve {
                     ..
                 } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
-                assert_ok!(CurveAmm::set_enable_state(
-                    Origin::signed(alice),
-                    pool,
-                    false,
-                ));
+                assert_ok!(CurveAmm::set_enable_state(Origin::root(), pool, false,));
 
                 let withdraw_amount = initial_amounts.iter().sum::<Balance>() / 2;
 
@@ -1640,11 +1641,7 @@ mod curve {
                 let amounts = initial_amounts.iter().map(|i| i / 5).collect::<Vec<_>>();
                 let max_burn = (n_coins as Balance) * BALANCE_ONE * base_amount;
 
-                assert_ok!(CurveAmm::set_enable_state(
-                    Origin::signed(alice),
-                    pool,
-                    false,
-                ));
+                assert_ok!(CurveAmm::set_enable_state(Origin::root(), pool, false,));
 
                 assert_err_ignore_postinfo!(
                     CurveAmm::remove_liquidity_imbalance(
@@ -1946,11 +1943,7 @@ mod curve {
 
                 let rate_mod = (100_001, 100_000);
 
-                assert_ok!(CurveAmm::set_enable_state(
-                    Origin::signed(alice),
-                    pool,
-                    false,
-                ));
+                assert_ok!(CurveAmm::set_enable_state(Origin::root(), pool, false,));
 
                 assert_err_ignore_postinfo!(
                     CurveAmm::remove_liquidity_one_coin(
@@ -2349,7 +2342,7 @@ mod curve {
                 let amount = BALANCE_ONE;
                 let _ = TestAssets::mint(coins[sending], &bob, amount);
 
-                assert_ok!(CurveAmm::set_enable_state(Origin::signed(bob), pool, false,));
+                assert_ok!(CurveAmm::set_enable_state(Origin::root(), pool, false,));
 
                 assert_err_ignore_postinfo!(
                     CurveAmm::exchange(

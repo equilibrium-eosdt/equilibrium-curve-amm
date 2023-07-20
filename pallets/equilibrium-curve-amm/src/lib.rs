@@ -86,6 +86,8 @@ pub mod pallet {
         /// The overarching event type.
         type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
+        /// Origin used to administer the pallet.
+        type AdminOrigin: EnsureOrigin<Self::Origin>;
         /// The asset ID type
         type AssetId: Parameter + Ord + Copy;
         /// The balance type of an account
@@ -426,7 +428,7 @@ pub mod pallet {
             pool_id: PoolId,
             is_enabled: bool,
         ) -> DispatchResultWithPostInfo {
-            ensure_signed(origin)?;
+            T::AdminOrigin::ensure_origin(origin)?;
             <Self as CurveAmm>::set_enable_state(pool_id, is_enabled)
         }
     }
