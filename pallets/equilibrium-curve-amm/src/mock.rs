@@ -302,6 +302,7 @@ impl super::traits::OnPoolCreated for OnPoolCreated {
 
 impl curve_amm::Config for Test {
     type Event = Event;
+    type AdminOrigin = system::EnsureRoot<Self::AccountId>;
     type AssetId = i64;
     type Balance = Balance;
     type Currency = Balances;
