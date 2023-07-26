@@ -19,6 +19,7 @@ pub trait WeightInfo {
     fn remove_liquidity_imbalance(b: u32) -> Weight;
     fn remove_liquidity_one_coin() -> Weight;
     fn withdraw_admin_fees() -> Weight;
+    fn set_enable_state() -> Weight;
 }
 
 impl crate::WeightInfo for () {
@@ -44,6 +45,9 @@ impl crate::WeightInfo for () {
         Weight::zero()
     }
     fn withdraw_admin_fees() -> Weight {
+        Weight::zero()
+    }
+    fn set_enable_state() -> Weight {
         Weight::zero()
     }
 }
