@@ -681,7 +681,7 @@ checksum = "e48c92028aaa870e83d51c64e5d4e0b6981b360c522198c23959f219a4e1b15b"
 
 [[package]]
 name = "equilibrium-curve-amm"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "frame-benchmarking",
  "frame-support",

@@ -45,8 +45,8 @@ impl system::Config for Test {
     type BlockWeights = ();
     type BlockLength = ();
     type DbWeight = ();
-    type Origin = Origin;
-    type Call = Call;
+    type RuntimeOrigin = RuntimeOrigin;
+    type RuntimeCall = RuntimeCall;
     type Index = u64;
     type BlockNumber = u64;
     type Hash = H256;
@@ -54,7 +54,7 @@ impl system::Config for Test {
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = BlockHashCount;
     type Version = ();
     type PalletInfo = PalletInfo;
@@ -75,12 +75,16 @@ impl pallet_balances::Config for Test {
     type MaxLocks = ();
     type Balance = Balance;
     type DustRemoval = ();
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = ();
     type MaxReserves = ();
     type ReserveIdentifier = ();
+    type HoldIdentifier = ();
+    type FreezeIdentifier = ();
+    type MaxHolds = ();
+    type MaxFreezes = ();
 }
 
 parameter_types! {
@@ -301,7 +305,8 @@ impl super::traits::OnPoolCreated for OnPoolCreated {
 }
 
 impl curve_amm::Config for Test {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
+    type AdminOrigin = system::EnsureRoot<Self::AccountId>;
     type AssetId = i64;
     type Balance = Balance;
     type Currency = Balances;

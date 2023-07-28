@@ -85,7 +85,8 @@ pub mod pallet {
     pub trait Config: frame_system::Config {
         /// The overarching event type.
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
+        /// Origin used to administer the pallet.
+        type AdminOrigin: EnsureOrigin<Self::RuntimeOrigin>;
         /// The asset ID type
         type AssetId: Parameter + Ord + Copy;
         /// The balance type of an account
@@ -268,6 +269,14 @@ pub mod pallet {
         ///
         /// [who, pool_id, admin_fees]
         WithdrawAdminFees(T::AccountId, PoolId, Vec<T::Balance>),
+        /// Pool with specified id `PoolId` changed enable state `bool`.
+        ///
+        /// Included values are:
+        /// - pool identifier `PoolId`
+        /// - pool is enabled `bool`
+        ///
+        /// \[pool_id, is_enabled\]
+        PoolEnableStateChanged(PoolId, bool),
     }
 
     /// Error type for Equilibrium Curve AMM pallet
@@ -295,6 +304,8 @@ pub mod pallet {
         IndexOutOfRange,
         /// The `AssetChecker` can use this error in case it can't provide better error
         ExternalAssetCheckFailed,
+        /// User can call only removeLiquidity method for pool
+        Disabled,
     }
 
     #[pallet::hooks]
@@ -413,6 +424,17 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             <Self as CurveAmm>::withdraw_admin_fees(&who, pool_id)
+        }
+
+        /// Set enable pool state.
+        #[pallet::weight(T::WeightInfo::set_enable_state())]
+        pub fn set_enable_state(
+            origin: OriginFor<T>,
+            pool_id: PoolId,
+            is_enabled: bool,
+        ) -> DispatchResultWithPostInfo {
+            T::AdminOrigin::ensure_origin(origin)?;
+            <Self as CurveAmm>::set_enable_state(pool_id, is_enabled)
         }
     }
 }
@@ -952,6 +974,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                     admin_fee,
                     balances: empty_balances.clone(),
                     total_balances: empty_balances,
+                    is_enabled: true,
                 });
 
                 Ok(())
@@ -997,6 +1020,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 );
 
                 ensure!(n_coins == amounts.len(), Error::<T>::IndexOutOfRange);
+                ensure!(pool.is_enabled, Error::<T>::Disabled);
 
                 let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
 
@@ -1168,6 +1192,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 let n_coins = pool.assets.len();
 
                 ensure!(i < n_coins && j < n_coins, Error::<T>::IndexOutOfRange);
+                ensure!(pool.is_enabled, Error::<T>::Disabled);
 
                 let n_dx = Self::convert_balance_to_number(dx);
                 let n_min_dy = Self::convert_balance_to_number(min_dy);
@@ -1373,6 +1398,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                 );
 
                 ensure!(n_coins == amounts.len(), Error::<T>::IndexOutOfRange);
+                ensure!(pool.is_enabled, Error::<T>::Disabled);
 
                 let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
 
@@ -1545,7 +1571,7 @@ impl<T: Config> CurveAmm for Pallet<T> {
                     Error::<T>::InconsistentStorage
                 );
                 ensure!(i < n_coins, Error::<T>::IndexOutOfRange);
-
+                ensure!(pool.is_enabled, Error::<T>::Disabled);
                 let ann = Self::get_ann(pool.amplification, n_coins).ok_or(Error::<T>::Math)?;
 
                 let token_supply =
@@ -1671,6 +1697,24 @@ impl<T: Config> CurveAmm for Pallet<T> {
 
         Self::deposit_event(Event::WithdrawAdminFees(who.clone(), pool_id, admin_fees));
 
+        Ok(().into())
+    }
+
+    fn set_enable_state(pool_id: PoolId, is_enabled: bool) -> DispatchResultWithPostInfo {
+        Pools::<T>::try_mutate(pool_id, |maybe_pool| -> Result<_, DispatchError> {
+            let pool = maybe_pool.as_mut().ok_or(Error::<T>::PoolNotFound)?;
+            let n_coins = pool.assets.len();
+
+            ensure!(
+                n_coins == pool.balances.len(),
+                Error::<T>::InconsistentStorage
+            );
+            pool.is_enabled = is_enabled;
+
+            Ok(())
+        })?;
+
+        Self::deposit_event(Event::PoolEnableStateChanged(pool_id, is_enabled));
         Ok(().into())
     }
 }
@@ -1822,6 +1866,9 @@ pub mod traits {
             who: &Self::AccountId,
             pool_id: PoolId,
         ) -> DispatchResultWithPostInfo;
+
+        /// Set pool enable state
+        fn set_enable_state(pool_id: PoolId, is_enabled: bool) -> DispatchResultWithPostInfo;
     }
 
     /// Notification about new pool created.
@@ -1885,4 +1932,6 @@ pub struct PoolInfo<AccountId, AssetId, Number, Balance> {
     pub balances: Vec<Balance>,
     /// Current balances including admin_fee
     pub total_balances: Vec<Balance>,
+    /// Pool is enable to deposit and exchange
+    pub is_enabled: bool,
 }
