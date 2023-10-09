@@ -46,14 +46,15 @@ mod tests;
 pub mod weights;
 
 use crate::traits::CurveAmm;
-use frame_support::codec::{Decode, Encode};
-use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo};
+use codec::{Decode, Encode};
+use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
 use frame_support::ensure;
 use frame_support::traits::{Currency, ExistenceRequirement, Get, OnUnbalanced, WithdrawReasons};
-use sp_runtime::traits::{
-    AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert,
-};
 use sp_runtime::Permill;
+use sp_runtime::{
+    traits::{AccountIdConversion, CheckedAdd, CheckedDiv, CheckedMul, CheckedSub, Convert},
+    DispatchError,
+};
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::iter::FromIterator;
 use sp_std::prelude::*;
@@ -68,9 +69,10 @@ pub mod pallet {
     use crate::traits::BenchmarkingInit;
     use crate::traits::{CurveAmm, SliceChecker};
     use crate::WeightInfo;
+    use codec::Codec;
     use core::convert::TryInto;
     use frame_support::{
-        dispatch::{Codec, DispatchResultWithPostInfo},
+        dispatch::DispatchResultWithPostInfo,
         pallet_prelude::*,
         traits::{Currency, OnUnbalanced},
         PalletId,
@@ -1723,9 +1725,9 @@ impl<T: Config> CurveAmm for Pallet<T> {
 /// in order to equilibrium_curve_amm pallet can work properly.
 pub mod traits {
     use crate::{PoolId, PoolInfo, PoolTokenIndex};
-    use frame_support::dispatch::{DispatchError, DispatchResult, DispatchResultWithPostInfo};
+    use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo};
     use impl_trait_for_tuples::impl_for_tuples;
-    use sp_runtime::Permill;
+    use sp_runtime::{DispatchError, Permill};
     use sp_std::vec::Vec;
 
     /// Pallet equilibrium_curve_amm should interact with custom Assets.

@@ -5,7 +5,7 @@ use frame_support::assert_err_ignore_postinfo;
 use frame_support::{assert_ok, traits::Currency};
 use sp_runtime::traits::{Saturating, Zero};
 use sp_runtime::Permill;
-use sp_runtime::{FixedPointNumber, FixedU128, DispatchError};
+use sp_runtime::{DispatchError, FixedPointNumber, FixedU128};
 use sp_std::cmp::Ordering;
 
 fn last_event() -> RuntimeEvent {
@@ -932,10 +932,19 @@ mod curve {
                     ..
                 } = init_add_initial_liquidity_and_mint_bob(Permill::zero(), Permill::zero());
 
-                assert_ok!(CurveAmm::set_enable_state(RuntimeOrigin::root(), pool, false));
+                assert_ok!(CurveAmm::set_enable_state(
+                    RuntimeOrigin::root(),
+                    pool,
+                    false
+                ));
 
                 assert_err_ignore_postinfo!(
-                    CurveAmm::add_liquidity(RuntimeOrigin::signed(bob), pool, initial_amounts.clone(), 0),
+                    CurveAmm::add_liquidity(
+                        RuntimeOrigin::signed(bob),
+                        pool,
+                        initial_amounts.clone(),
+                        0
+                    ),
                     Error::<Test>::Disabled
                 );
             });
@@ -1263,7 +1272,11 @@ mod curve {
                     ..
                 } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
-                assert_ok!(CurveAmm::set_enable_state(RuntimeOrigin::root(), pool, false));
+                assert_ok!(CurveAmm::set_enable_state(
+                    RuntimeOrigin::root(),
+                    pool,
+                    false
+                ));
 
                 let withdraw_amount = initial_amounts.iter().sum::<Balance>() / 2;
 
@@ -1634,7 +1647,11 @@ mod curve {
                 let amounts = initial_amounts.iter().map(|i| i / 5).collect::<Vec<_>>();
                 let max_burn = (n_coins as Balance) * BALANCE_ONE * base_amount;
 
-                assert_ok!(CurveAmm::set_enable_state(RuntimeOrigin::root(), pool, false,));
+                assert_ok!(CurveAmm::set_enable_state(
+                    RuntimeOrigin::root(),
+                    pool,
+                    false,
+                ));
 
                 assert_err_ignore_postinfo!(
                     CurveAmm::remove_liquidity_imbalance(
@@ -1928,13 +1945,16 @@ mod curve {
         #[test]
         fn test_remove_liquidity_one_coin_disabled() {
             new_test_ext().execute_with(|| {
-                let AddInitialLiquidityContext {
-                    alice, pool, ..
-                } = init_add_initial_liquidity(Permill::zero(), Permill::zero());
+                let AddInitialLiquidityContext { alice, pool, .. } =
+                    init_add_initial_liquidity(Permill::zero(), Permill::zero());
 
                 let idx: usize = 0;
 
-                assert_ok!(CurveAmm::set_enable_state(RuntimeOrigin::root(), pool, false,));
+                assert_ok!(CurveAmm::set_enable_state(
+                    RuntimeOrigin::root(),
+                    pool,
+                    false,
+                ));
 
                 assert_err_ignore_postinfo!(
                     CurveAmm::remove_liquidity_one_coin(
@@ -2323,16 +2343,17 @@ mod curve {
                 let admin_fee = PerThing::from_rational(admin_fee, FEE_Q);
 
                 let AddInitialLiquidityContext {
-                    bob,
-                    pool,
-                    coins,
-                    ..
+                    bob, pool, coins, ..
                 } = init_add_initial_liquidity(fee, admin_fee);
 
                 let amount = BALANCE_ONE;
                 let _ = TestAssets::mint(coins[sending], &bob, amount);
 
-                assert_ok!(CurveAmm::set_enable_state(RuntimeOrigin::root(), pool, false,));
+                assert_ok!(CurveAmm::set_enable_state(
+                    RuntimeOrigin::root(),
+                    pool,
+                    false,
+                ));
 
                 assert_err_ignore_postinfo!(
                     CurveAmm::exchange(
@@ -2578,7 +2599,10 @@ mod curve {
                     get_admin_fees(pool, swap, &coins).iter().copied().collect();
                 let total_balances_before = CurveAmm::pools(pool).unwrap().total_balances;
 
-                assert_ok!(CurveAmm::withdraw_admin_fees(RuntimeOrigin::signed(bob), pool));
+                assert_ok!(CurveAmm::withdraw_admin_fees(
+                    RuntimeOrigin::signed(bob),
+                    pool
+                ));
 
                 let total_balances_after = CurveAmm::pools(pool).unwrap().total_balances;
                 for i in 0..coins.len() {

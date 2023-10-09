@@ -8,9 +8,7 @@ use jsonrpsee::{
 use sp_api::{CallApiAt, CallApiAtParams, ExecutionContext, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_rpc::number::NumberOrHex;
-use sp_runtime::{
-    traits::{Block as BlockT, MaybeDisplay},
-};
+use sp_runtime::traits::{Block as BlockT, MaybeDisplay};
 use std::sync::Arc;
 use std::{convert::TryInto, fmt::Debug};
 
