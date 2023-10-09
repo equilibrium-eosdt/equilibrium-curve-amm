@@ -5,8 +5,9 @@ use jsonrpsee::{
     core::{async_trait, Error as RpcError, RpcResult},
     proc_macros::rpc,
 };
-use sp_api::{CallApiAt, CallApiAtParams, ExecutionContext, ProvideRuntimeApi};
+use sp_api::{CallApiAt, CallApiAtParams, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_core::traits::CallContext;
 use sp_rpc::number::NumberOrHex;
 use sp_runtime::traits::{Block as BlockT, MaybeDisplay};
 use std::sync::Arc;
@@ -95,14 +96,14 @@ where
         if let Some(at) = mb_block {
             let encoded = self
                 .client
-                .call_api_at(CallApiAtParams::<_, _> {
+                .call_api_at(CallApiAtParams::<_> {
                     at,
                     function: "EquilibriumCurveAmmApi_get_virtual_price",
                     arguments: Encode::encode(&pool_id),
                     overlayed_changes: &Default::default(),
-                    storage_transaction_cache: &Default::default(),
-                    context: ExecutionContext::BlockConstruction,
+                    call_context: CallContext::Offchain,
                     recorder: &None,
+                    extensions: &Default::default(),
                 })
                 .map_err(|e| RpcError::Custom(e.to_string()))?;
 
